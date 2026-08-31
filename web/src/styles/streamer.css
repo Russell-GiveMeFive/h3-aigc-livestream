@@ -1,0 +1,244 @@
+/* ===== 主播导演台布局 ===== */
+.layout {
+  display: grid;
+  grid-template-columns: 320px 1fr;
+  gap: 16px;
+  padding: 16px 20px;
+  max-width: 1600px;
+  margin: 0 auto;
+  align-items: start;
+}
+
+.rail {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  position: sticky;
+  top: 68px;
+}
+
+.stage {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+}
+
+.stage > .error-banner {
+  margin-bottom: 0;
+}
+
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+}
+
+.buffer-wrap {
+  margin-top: 14px;
+}
+
+/* ── 预览区 ── */
+.preview-panel {
+  padding-bottom: 12px;
+}
+
+.clip-wall {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.preview-player {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  background: #000;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  box-shadow: 0 14px 40px rgba(0, 0, 0, 0.5);
+}
+
+.filmstrip {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding-bottom: 6px;
+}
+
+.film-cell {
+  position: relative;
+  flex: 0 0 auto;
+  width: 148px;
+  aspect-ratio: 16 / 9;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  overflow: hidden;
+  background: #000;
+}
+
+.film-cell video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.film-cell.active {
+  border-color: var(--amber);
+  box-shadow: 0 0 0 1px var(--amber), 0 0 14px rgba(255, 180, 84, 0.25);
+}
+
+.film-label {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  font-family: var(--mono);
+  font-size: 9px;
+  color: #fff;
+  background: rgba(0, 0, 0, 0.65);
+  padding: 1px 6px;
+  text-align: left;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ── 剧本时间线 + 日志 ── */
+.content-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 320px 300px;
+  gap: 16px;
+  align-items: start;
+}
+
+.timeline-panel {
+  min-height: 300px;
+}
+
+.beats-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-height: 480px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.beat-card {
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--bg-soft);
+  padding: 10px 12px;
+  transition: border-color 0.2s ease;
+}
+
+.beat-card.done {
+  border-left: 2px solid var(--green);
+}
+
+.beat-head {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.beat-no {
+  font-family: var(--mono);
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--amber);
+  flex-shrink: 0;
+}
+
+.beat-summary {
+  flex: 1;
+  font-size: 13px;
+  color: var(--text);
+  line-height: 1.5;
+}
+
+.beat-meta {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--text-faint);
+  flex-shrink: 0;
+}
+
+.shot-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.shot-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 8px;
+  font-size: 11px;
+  border-radius: 4px;
+  border: 1px solid var(--line);
+  background: var(--panel-2);
+  color: var(--text-dim);
+}
+
+.shot-chip:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.shot-chip:not(:disabled):hover {
+  border-color: var(--amber);
+  color: var(--amber);
+}
+
+.shot-id {
+  font-family: var(--mono);
+}
+
+.shot-dur {
+  color: var(--text-faint);
+  font-family: var(--mono);
+}
+
+.shot-state {
+  font-family: var(--mono);
+  font-size: 10px;
+}
+
+.shot-chip.s-ready .shot-state {
+  color: var(--green);
+}
+
+.shot-chip.s-running .shot-state {
+  color: var(--amber);
+}
+
+.shot-chip.s-failed .shot-state {
+  color: var(--red);
+}
+
+.log-panel {
+  display: flex;
+  flex-direction: column;
+  min-height: 300px;
+}
+
+.log-box {
+  height: 436px;
+}
+
+@media (max-width: 1200px) {
+  .layout {
+    grid-template-columns: 1fr;
+  }
+  .rail {
+    position: static;
+  }
+  .content-grid {
+    grid-template-columns: 1fr;
+  }
+}

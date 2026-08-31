@@ -1,0 +1,12 @@
+services:
+  srs:
+    image: registry.cn-hangzhou.aliyuncs.com/ossrs/srs:5
+    container_name: h3-srs
+    command: ./objs/srs -c conf/srs.conf
+    ports:
+      - "1935:1935"   # RTMP 推流入口
+      - "8080:8080"   # HLS / HTTP-FLV 拉流
+    volumes:
+      - ./srs.conf:/usr/local/srs/conf/srs.conf:ro
+      - ./data/hls:/usr/local/srs/objs/nginx/html
+    restart: unless-stopped

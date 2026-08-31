@@ -1,0 +1,625 @@
+/* ===== H3·LIVE 设计系统：广播控制室美学 ===== */
+:root {
+  --bg: #0a0c0f;
+  --bg-soft: #0f1216;
+  --panel: #14181d;
+  --panel-2: #1a1f26;
+  --line: #262d36;
+  --line-bright: #3a4450;
+  --text: #e9e6df;
+  --text-dim: #8a939e;
+  --text-faint: #565f6a;
+  --amber: #ffb454;
+  --amber-deep: #e08a2e;
+  --cyan: #55c8d8;
+  --red: #ff5d5d;
+  --green: #7fd88f;
+  --mono: 'IBM Plex Mono', 'SFMono-Regular', Menlo, Consolas, monospace;
+  --sans: 'IBM Plex Mono', 'PingFang SC', 'Noto Sans SC', 'Microsoft YaHei', sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--sans);
+  font-size: 14px;
+  line-height: 1.5;
+  letter-spacing: 0.01em;
+  overflow-x: hidden;
+}
+
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 999;
+  background: repeating-linear-gradient(
+    to bottom,
+    transparent 0,
+    transparent 2px,
+    rgba(255, 255, 255, 0.012) 3px,
+    transparent 4px
+  );
+  mix-blend-mode: overlay;
+}
+
+body::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 998;
+  opacity: 0.5;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='120' height='120' filter='url(%23n)' opacity='0.05'/%3E%3C/svg%3E");
+}
+
+::selection {
+  background: var(--amber);
+  color: #000;
+}
+
+/* ===== 顶栏 ===== */
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 20px;
+  border-bottom: 1px solid var(--line);
+  background: var(--bg-soft);
+  position: sticky;
+  top: 0;
+  z-index: 50;
+}
+
+.brand {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.brand-mark {
+  color: var(--amber);
+  font-size: 20px;
+}
+
+.brand-name {
+  font-family: var(--mono);
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+}
+
+.brand-sub {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.2em;
+  color: var(--text-faint);
+}
+
+.top-right {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+/* ===== Chip ===== */
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 8px;
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text-dim);
+  background: var(--bg-soft);
+  white-space: nowrap;
+}
+
+.chip .dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--text-faint);
+}
+
+.chip.on .dot {
+  background: var(--green);
+  box-shadow: 0 0 6px var(--green);
+}
+
+.chip.warn .dot {
+  background: var(--amber);
+  box-shadow: 0 0 6px var(--amber);
+}
+
+.chip.rec .dot {
+  background: var(--red);
+  box-shadow: 0 0 8px var(--red);
+  animation: blink 1.2s steps(2, start) infinite;
+}
+
+@keyframes blink {
+  to {
+    visibility: hidden;
+  }
+}
+
+.chip-link {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--cyan);
+  text-decoration: none;
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  padding: 2px 8px;
+  background: var(--bg-soft);
+}
+
+.chip-link:hover {
+  border-color: var(--cyan);
+}
+
+/* ===== 面板 ===== */
+.panel {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 14px 16px;
+}
+
+.section-title {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.18em;
+  color: var(--amber);
+  text-transform: uppercase;
+  margin-bottom: 12px;
+  font-weight: 600;
+}
+
+.bar-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+
+.bar-head .section-title {
+  margin: 0;
+}
+
+/* ===== 表单 ===== */
+input,
+textarea,
+select {
+  width: 100%;
+  font-family: var(--mono);
+  font-size: 13px;
+  color: var(--text);
+  background: var(--bg-soft);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 9px 10px;
+  outline: none;
+  transition: border-color 0.15s ease;
+}
+
+select {
+  appearance: none;
+  cursor: pointer;
+}
+
+.field-label {
+  display: block;
+  margin: 10px 0 5px;
+  color: var(--text-faint);
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.12em;
+}
+
+input:focus,
+textarea:focus,
+select:focus {
+  border-color: var(--amber);
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: var(--text-faint);
+}
+
+button {
+  font-family: var(--mono);
+  font-size: 13px;
+  letter-spacing: 0.08em;
+  padding: 9px 16px;
+  border-radius: 4px;
+  border: 1px solid var(--line-bright);
+  background: var(--panel-2);
+  color: var(--text);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+button:hover:not(:disabled) {
+  border-color: var(--amber);
+  color: var(--amber);
+}
+
+button:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+button.primary {
+  background: var(--amber);
+  border-color: var(--amber);
+  color: #14100a;
+  font-weight: 600;
+}
+
+button.primary:hover:not(:disabled) {
+  background: var(--amber-deep);
+  border-color: var(--amber-deep);
+  color: #14100a;
+}
+
+button.danger {
+  border-color: var(--red);
+  color: var(--red);
+}
+
+button.danger:hover:not(:disabled) {
+  background: rgba(255, 93, 93, 0.12);
+  color: var(--red);
+}
+
+button.mini {
+  padding: 3px 10px;
+  font-size: 11px;
+}
+
+.key-row {
+  display: flex;
+  gap: 8px;
+}
+
+.key-row input {
+  flex: 1;
+}
+
+.actions {
+  display: flex;
+  gap: 10px;
+}
+
+.actions button {
+  flex: 1;
+}
+
+.hint {
+  font-size: 11px;
+  color: var(--text-dim);
+  margin-top: 8px;
+  word-break: break-all;
+}
+
+.hint.dim {
+  color: var(--text-faint);
+}
+
+.hint.err {
+  color: var(--red);
+}
+
+/* ===== Stat ===== */
+.stat {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 10px 12px;
+  position: relative;
+  overflow: hidden;
+}
+
+.stat::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: var(--amber);
+  opacity: 0.7;
+}
+
+.stat.slim::before {
+  display: none;
+}
+
+.stat .label {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.16em;
+  color: var(--text-faint);
+  text-transform: uppercase;
+}
+
+.stat .value {
+  font-family: var(--mono);
+  font-size: 24px;
+  font-weight: 600;
+  color: var(--amber);
+  line-height: 1.15;
+  margin-top: 2px;
+  font-variant-numeric: tabular-nums;
+}
+
+.stat .value.cyan {
+  color: var(--cyan);
+}
+
+.stat .value.dim {
+  color: var(--text);
+}
+
+.stat .unit {
+  font-size: 12px;
+  color: var(--text-faint);
+  font-weight: 400;
+  margin-left: 2px;
+}
+
+/* ===== 状态点 ===== */
+.dot.sm {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background: var(--text-faint);
+}
+
+.dot.sm.green {
+  background: var(--green);
+  box-shadow: 0 0 5px rgba(127, 216, 143, 0.6);
+}
+
+.dot.sm.red {
+  background: var(--red);
+}
+
+.dot.sm.amber {
+  background: var(--amber);
+}
+
+.dot.sm.pulse {
+  animation: pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.3;
+  }
+}
+
+/* ===== 缓冲条 ===== */
+.buffer-track {
+  position: relative;
+  height: 12px;
+  background: var(--bg-soft);
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.buffer-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 0%;
+  background: linear-gradient(90deg, var(--amber-deep), var(--amber));
+  transition: width 0.4s ease;
+  box-shadow: 0 0 10px rgba(255, 180, 84, 0.3);
+}
+
+.buffer-target {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: var(--cyan);
+  opacity: 0.7;
+}
+
+/* ===== 错误横幅 ===== */
+.error-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  background: rgba(255, 93, 93, 0.1);
+  border: 1px solid var(--red);
+  border-radius: 6px;
+  padding: 12px 14px;
+  color: var(--red);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.error-icon {
+  font-size: 16px;
+  flex-shrink: 0;
+}
+
+/* ===== 日志 ===== */
+.log-box {
+  flex: 1;
+  overflow-y: auto;
+  font-family: var(--mono);
+  font-size: 12px;
+  line-height: 1.65;
+  color: var(--text-dim);
+  background: var(--bg-soft);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 10px 12px;
+}
+
+.log-line {
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.log-line .t {
+  color: var(--text-faint);
+  margin-right: 8px;
+}
+
+.log-line.ok .msg {
+  color: var(--green);
+}
+
+.log-line.warn .msg {
+  color: var(--amber);
+}
+
+.log-line.err .msg {
+  color: var(--red);
+}
+
+.log-empty {
+  color: var(--text-faint);
+}
+
+.empty-hint {
+  color: var(--text-faint);
+  font-size: 13px;
+  padding: 20px 4px;
+}
+
+.danmaku-panel {
+  display: flex;
+  flex-direction: column;
+  min-height: 300px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 14px 16px;
+}
+
+.danmaku-list {
+  flex: 1;
+  min-height: 160px;
+  max-height: 380px;
+  overflow-y: auto;
+  background: var(--bg-soft);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 10px 12px;
+}
+
+.danmaku-line {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  font-size: 12px;
+  line-height: 1.7;
+}
+
+.danmaku-user {
+  color: var(--cyan);
+  font-family: var(--mono);
+  flex-shrink: 0;
+}
+
+.danmaku-text {
+  color: var(--text);
+  word-break: break-word;
+}
+
+.danmaku-form {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.danmaku-form input {
+  flex: 1;
+}
+
+.danmaku-form button {
+  flex-shrink: 0;
+}
+
+
+
+.route-loading {
+  min-height: 100vh;
+  display: grid;
+  place-content: center;
+  grid-auto-flow: column;
+  align-items: center;
+  gap: 12px;
+  color: var(--text-dim);
+  font-family: var(--mono);
+  letter-spacing: 0.08em;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+.stream-info {
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px dashed var(--line);
+}
+
+.room-big {
+  font-family: var(--mono);
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--amber);
+  letter-spacing: 0.2em;
+}
+
+.mode-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.mode-tag {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--cyan);
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  padding: 1px 8px;
+}
