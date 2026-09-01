@@ -3,6 +3,8 @@ import { Navigate, Route, Routes } from 'react-router-dom'
 
 const StreamerPage = lazy(() => import('./pages/StreamerPage'))
 const ViewerPage = lazy(() => import('./pages/ViewerPage'))
+const HistoryPage = lazy(() => import('./pages/HistoryPage'))
+const SettingsPage = lazy(() => import('./pages/SettingsPage'))
 
 function RouteLoading() {
   return (
@@ -20,6 +22,8 @@ export default function App() {
         <Route path="/" element={<Navigate to="/streamer" replace />} />
         <Route path="/streamer" element={<StreamerPage />} />
         <Route path="/viewer" element={<ViewerPage />} />
+        <Route path="/history" element={<HistoryPage />} />
+        <Route path="/settings" element={<SettingsPage />} />
         <Route path="*" element={<Navigate to="/streamer" replace />} />
       </Routes>
     </Suspense>

@@ -1,84 +1,16 @@
-import { createServer, type IncomingMessage } from 'node:http'
-import { WebSocketServer, WebSocket } from 'ws'
-import { parse } from 'node:url'
 import fs from 'node:fs'
-import path from 'node:path'
-import { nowId } from './util'
 import { config, loadEnvFile } from './config'
-import { createApi, type Session } from './http/api'
-import { RoomHub } from './ws/rooms'
+import { createApp } from './app'
+import { sweepCacheDir } from './util/cache'
 
 loadEnvFile()
-
 fs.mkdirSync(config.cacheDir, { recursive: true })
 
-const hub = new RoomHub()
-const sessions = new Map<string, Session>()
+// 启动时 LRU 清理 cacheDir：保留最近 200 个文件。长期开播避免磁盘打爆。
+const sweep = sweepCacheDir(config.cacheDir, 200)
+if (sweep.deleted > 0) console.log(`[startup] cacheDir sweep: kept=${sweep.kept} deleted=${sweep.deleted}`)
 
-const onLog = (roomId: string, msg: string) => {
-  const stamp = new Date().toLocaleTimeString('zh-CN', { hour12: false })
-  console.log(`[${stamp}] [${roomId}] ${msg}`)
-  hub.bus(roomId).emit('log', { ts: Date.now(), msg })
-}
-
-const app = createApi({ hub, sessions, onLog })
-const server = createServer(app)
-
-// ── WebSocket：/ws?room=xxx ──
-const wss = new WebSocketServer({ noServer: true })
-server.on('upgrade', (req: IncomingMessage, socket, head) => {
-  const url = parse(req.url ?? '', true)
-  if (url.pathname !== '/ws') {
-    socket.destroy()
-    return
-  }
-  const roomId = String(url.query.room ?? '')
-  if (!roomId || !hub.has(roomId)) {
-    socket.write('HTTP/1.1 404 Not Found\r\n\r\n')
-    socket.destroy()
-    return
-  }
-  wss.handleUpgrade(req, socket, head, (ws) => {
-    wss.emit('connection', ws, req, roomId)
-  })
-})
-
-wss.on('connection', (ws: WebSocket, _req: IncomingMessage, roomId: string) => {
-  const bus = hub.bus(roomId)
-  const clientName = `观众${nowId('user').slice(-4)}`
-  let lastDanmakuAt = 0
-  const events = ['log', 'clip', 'beat', 'phase', 'error', 'danmaku'] as const
-  const handlers = new Map<string, (payload: unknown) => void>()
-  for (const ev of events) {
-    const handler = (payload: unknown) => {
-      if (ws.readyState !== WebSocket.OPEN) return
-      const body = payload !== null && typeof payload === 'object' ? payload : { msg: payload }
-      ws.send(JSON.stringify({ type: ev, ...body }))
-    }
-    handlers.set(ev, handler)
-    bus.on(ev, handler)
-  }
-  ws.on('close', () => {
-    for (const ev of events) {
-      bus.off(ev, handlers.get(ev)!)
-    }
-  })
-  ws.on('message', (data) => {
-    try {
-      const msg = JSON.parse(String(data))
-      if (msg.type === 'ping') ws.send(JSON.stringify({ type: 'pong' }))
-      if (msg.type === 'danmaku') {
-        const now = Date.now()
-        const text = String(msg.text ?? '').trim().replace(/[\x00-\x1f]/g, '').slice(0, 120)
-        if (!text || now - lastDanmakuAt < 800) return
-        lastDanmakuAt = now
-        bus.emit('danmaku', { id: nowId('dm'), user: clientName, text, ts: now })
-      }
-    } catch {
-      /* 忽略非法消息 */
-    }
-  })
-})
+const { server } = createApp({ config })
 
 server.listen(config.port, config.host, () => {
   const lines = [

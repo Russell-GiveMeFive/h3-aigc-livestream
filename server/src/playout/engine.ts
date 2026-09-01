@@ -1,4 +1,4 @@
-import { Clip } from '../types'
+import { Clip } from '@h3/protocol/types'
 
 /** 播放缓冲池：生成侧 addClip 入队，推流侧 takeNext 按序消费 */
 export class PlayoutEngine {

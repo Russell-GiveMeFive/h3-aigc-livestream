@@ -544,6 +544,24 @@ button.mini {
   line-height: 1.7;
 }
 
+.danmaku-line.pickable {
+  cursor: pointer;
+  border-radius: 3px;
+  padding: 1px 4px;
+  margin: 0 -4px;
+  transition: background-color 0.12s ease, color 0.12s ease;
+}
+.danmaku-line.pickable:hover {
+  background: rgba(255, 180, 84, 0.08);
+}
+.danmaku-line.pickable:hover .danmaku-text {
+  color: var(--amber);
+}
+.danmaku-line.pickable:focus-visible {
+  outline: 1px solid var(--amber);
+  outline-offset: 1px;
+}
+
 .danmaku-user {
   color: var(--cyan);
   font-family: var(--mono);

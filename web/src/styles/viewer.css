@@ -161,3 +161,43 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+/* ===== 响应式：小屏收紧排版 ===== */
+@media (max-width: 720px) {
+  .stage {
+    padding: 16px 14px 32px;
+  }
+
+  .enter-box {
+    margin-top: 8vh;
+    padding: 24px 20px;
+  }
+
+  .poster-title {
+    font-size: 26px;
+    letter-spacing: 0.2em;
+  }
+
+  .poster-sub {
+    font-size: 12px;
+    letter-spacing: 0.12em;
+    line-height: 1.7;
+  }
+
+  .stats-strip {
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+}
+
+@media (max-width: 480px) {
+  .poster-title {
+    font-size: 20px;
+  }
+
+  .watermark {
+    font-size: 9px;
+    right: 8px;
+    bottom: 8px;
+  }
+}

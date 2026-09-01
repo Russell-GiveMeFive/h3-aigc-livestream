@@ -1,18 +1,14 @@
 import { execFile } from 'node:child_process'
 import { spawn } from 'node:child_process'
 import { promisify } from 'node:util'
-import { Clip } from '../types'
+import { Clip } from '@h3/protocol/types'
 import { sleep } from '../util'
 import { PlayoutEngine } from './engine'
+import type { Pusher } from '../interfaces/push'
 
 const execFileAsync = promisify(execFile)
 
-export interface Pusher {
-  readonly currentClipId: string | null
-  readonly pushedCount: number
-  start(): void
-  stop(): Promise<void>
-}
+export type { Pusher }
 
 export interface PusherOptions {
   ffmpeg: string
@@ -52,7 +48,20 @@ export class RtmpPusher implements Pusher {
 
   async stop(): Promise<void> {
     this.stopped = true
-    this.current?.child.kill('SIGTERM')
+    const proc = this.current?.child
+    if (proc) {
+      await new Promise<void>((resolve) => {
+        const killTimer = setTimeout(() => {
+          try { proc.kill('SIGKILL') } catch { /* noop */ }
+        }, 1000)
+        proc.once('exit', () => {
+          clearTimeout(killTimer)
+          this.current = null
+          resolve()
+        })
+        try { proc.kill('SIGTERM') } catch { /* noop */ }
+      })
+    }
     await this.loopPromise?.catch(() => {})
   }
 
@@ -87,12 +96,8 @@ export class RtmpPusher implements Pusher {
       '-f', 'flv',
       this.rtmpUrl,
     )
-    const child = spawn(this.opts.ffmpeg, args, { stdio: ['ignore', 'ignore', 'pipe'] })
+    const child = spawn(this.opts.ffmpeg, args, { stdio: ['ignore', 'ignore', 'ignore'] })
     this.current = { clip, child }
-    let errTail = ''
-    child.stderr?.on('data', (d: Buffer) => {
-      errTail = String(d).slice(-1500)
-    })
     await new Promise<void>((resolve) => {
       const done = () => {
         this.current = null
@@ -100,7 +105,7 @@ export class RtmpPusher implements Pusher {
       }
       child.on('exit', (code) => {
         if (code !== 0 && !this.stopped) {
-          this.opts.onLog?.(`⚠️ ffmpeg 推流退出码 ${code}: ${errTail.slice(-300)}`)
+          this.opts.onLog?.(`⚠️ ffmpeg 推流退出码 ${code}`)
         }
         done()
       })

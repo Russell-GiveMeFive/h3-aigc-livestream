@@ -20,8 +20,3 @@ export function extractJson<T = unknown>(text: string): T {
   }
   throw new Error('模型输出不是有效 JSON')
 }
-
-/** 简易安全文件名 */
-export function safeName(s: string): string {
-  return s.replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 40) || 'x'
-}

@@ -3,7 +3,7 @@ import { useSearchParams } from 'react-router-dom'
 import Hls from 'hls.js'
 import { fetchStatus, wsUrl } from '../api'
 import type { StreamStatus, WsEvent } from '../types'
-import { Chip } from '../components/ui'
+import { Chip, Panel } from '../components/ui'
 import DanmakuFeed from '../components/DanmakuFeed'
 import '../styles/viewer.css'
 
@@ -31,6 +31,7 @@ export default function ViewerPage() {
   const stuckRef = useRef(false)
   const endedRef = useRef(false)
   const wsRef = useRef<WebSocket | null>(null)
+  const wsRetryRef = useRef(0)
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const roomRef = useRef<string | null>(null)
   roomRef.current = room
@@ -136,7 +137,11 @@ export default function ViewerPage() {
     wsRef.current?.close()
     const ws = new WebSocket(wsUrl(r))
     wsRef.current = ws
+    ws.onopen = () => {
+      wsRetryRef.current = 0
+    }
     ws.onmessage = (ev) => {
+      if (wsRef.current !== ws) return
       try {
         const d = JSON.parse(ev.data as string) as WsEvent
         if (d.type === 'danmaku' && d.id && d.user && d.text && d.ts) {
@@ -170,7 +175,15 @@ export default function ViewerPage() {
       }
     }
     ws.onclose = () => {
-      if (roomRef.current && !endedRef.current) setTimeout(() => attachWs(roomRef.current!), 2000)
+      if (roomRef.current !== r || wsRef.current !== ws) return
+      if (endedRef.current) return
+      if (wsRetryRef.current >= 8) {
+        setPoster(`WebSocket 重连失败（已重试 ${wsRetryRef.current} 次），请刷新页面`)
+        return
+      }
+      wsRetryRef.current++
+      const delay = Math.min(30000, 1000 * 2 ** wsRetryRef.current) + Math.random() * 500
+      setTimeout(() => attachWs(r), delay)
     }
   }, [connectHls])
 
@@ -221,8 +234,13 @@ export default function ViewerPage() {
     }, 2000)
   }, [connectHls])
 
-  const sendDanmaku = (text: string) => {
-    if (wsRef.current?.readyState === WebSocket.OPEN) wsRef.current.send(JSON.stringify({ type: 'danmaku', text }))
+  const sendDanmaku = (text: string): boolean => {
+    const cleaned = text.trim().replace(/[\x00-\x1f]/g, '')
+    if (!cleaned) return false
+    const truncated = cleaned.slice(0, 120)
+    if (wsRef.current?.readyState !== WebSocket.OPEN) return false
+    wsRef.current.send(JSON.stringify({ type: 'danmaku', text: truncated }))
+    return true
   }
 
   useEffect(() => {
@@ -294,10 +312,9 @@ export default function ViewerPage() {
             </div>
 
             <div className="below">
-              <div className="panel beat-card">
-                <span className="section-title">正在上演</span>
+              <Panel title="正在上演" className="beat-card">
                 <p className="beat-text" aria-live="polite">{beat}</p>
-              </div>
+              </Panel>
               <div className="stats-strip">
                 <div className="stat slim">
                   <div className="label">缓冲</div>
