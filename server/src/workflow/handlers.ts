@@ -222,8 +222,9 @@ function filterDanmaku(
  */
 function softResetForCollect(state: WorkflowState): WorkflowState {
   const preservedClips = state.generatedClips
+  const preservedHistory = state.scriptHistory
   const resetted = applyAction(state, 'reset')
-  return { ...resetted, generatedClips: preservedClips }
+  return { ...resetted, generatedClips: preservedClips, scriptHistory: preservedHistory }
 }
 
 export async function handleCollect(
@@ -460,15 +461,19 @@ export async function handleConfirmBeats(
     }
   }
 
-  // 持久化用户编辑
-  const draftBeats = incoming.map((b) => ({ ...b, confirmed: true }))
-  const confirmedBeats: Beat[] = draftBeats.map((b) => ({
+  const confirmedBeats: Beat[] = incoming.map((b) => ({
     id: b.id,
     summary: b.summary,
     shots: b.shots.map((s) => ({ ...s, beatId: b.id })),
   }))
 
-  let next = { ...state, draftBeats, confirmedBeats }
+  // 本轮确认即归档：把 incoming（用户最终编辑过的版本）推入 scriptHistory 并清空 draftBeats，
+  // 这样下一轮 submit 生成的剧本是唯一的"当前剧本"，历史只在折叠区可见。
+  const newHistory = confirmedBeats.length > 0
+    ? [...state.scriptHistory, confirmedBeats]
+    : state.scriptHistory
+
+  let next: WorkflowState = { ...state, draftBeats: [], confirmedBeats, scriptHistory: newHistory }
   next = applyAction(next, 'confirm_beats')
   workflowStore.upsert(next)
   emitPhase(bus, 'generating_clips', `确认 ${confirmedBeats.length} 拍，开始生成`)

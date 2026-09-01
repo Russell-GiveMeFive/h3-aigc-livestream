@@ -201,6 +201,7 @@ export default function StreamerPage() {
           draftBeats: [],
           confirmedBeats: [],
           generatedClips: [],
+          scriptHistory: [],
           startedAt: Date.now(),
         })
       })
@@ -226,7 +227,9 @@ export default function StreamerPage() {
       for (const d of resp.danmaku) {
         if (d.relevant !== false) sel.add(d.id)
       }
-      setSelectedDmIds((prev) => new Set([...prev, ...sel]))
+      // 每轮开始时清空旧选择：本轮提交只基于本轮最新弹幕，
+      // 避免上一轮的勾选残留被 splitter 二次喂入。
+      setSelectedDmIds(sel)
       addLog(`📥 收到 ${resp.danmaku.length} 条弹幕`, 'ok', { stage: 'collect' })
     } catch (e) {
       addLog(`💥 收集失败: ${(e as Error).message}`, 'err', { stage: 'collect' })
@@ -372,6 +375,8 @@ export default function StreamerPage() {
     try {
       const resp = await confirmBeats(sessionId!, room, editedBeats)
       setWf(resp.state)
+      // 服务端已把本轮剧本归档进 scriptHistory 并清空 draftBeats，本地编辑态同步清空
+      setEditedBeats([])
       addLog('📝 剧本已确认，准备生成视频', 'ok', { stage: 'confirm' })
       await handleGenerateClips()
     } catch (e) {

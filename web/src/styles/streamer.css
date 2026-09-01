@@ -485,6 +485,76 @@
 .dm-rel.dim { color: var(--text-faint); }
 
 /* ════════════════════════════════════════════════════════
+   历史剧本：折叠显示上一轮及更早的已确认剧本（只读）
+   ════════════════════════════════════════════════════════ */
+.script-history {
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--bg-soft);
+  margin-bottom: 12px;
+}
+
+.script-history > .script-history-summary {
+  list-style: none;
+  cursor: pointer;
+  padding: 8px 12px;
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  color: var(--text-dim);
+  user-select: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  transition: color 0.15s ease;
+}
+.script-history > .script-history-summary::-webkit-details-marker { display: none; }
+.script-history > .script-history-summary::before {
+  content: '▶';
+  font-size: 9px;
+  color: var(--text-faint);
+  transition: transform 0.15s ease;
+  display: inline-block;
+}
+.script-history[open] > .script-history-summary::before {
+  transform: rotate(90deg);
+  color: var(--amber);
+}
+.script-history > .script-history-summary:hover {
+  color: var(--text);
+}
+
+.script-history-body {
+  padding: 4px 12px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.script-history-round {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.script-history-round-head {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  color: var(--cyan);
+  padding: 2px 0;
+  border-top: 1px dashed var(--line);
+}
+
+.beat-card-frozen {
+  background: var(--bg);
+  opacity: 0.85;
+  border-style: dashed;
+}
+.beat-card-frozen .beat-summary { color: var(--text-dim); }
+.beat-card-frozen .beat-shot-row { opacity: 0.85; }
+
+/* ════════════════════════════════════════════════════════
    编辑剧本拍（Workbench 内部用，复用 .beat-card/.beat-head/.beat-no/.shot-chip）
    ════════════════════════════════════════════════════════ */
 .beat-summary-input {

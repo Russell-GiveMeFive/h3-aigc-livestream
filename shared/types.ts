@@ -166,10 +166,14 @@ export interface WorkflowState {
   collectedDanmaku: DanmakuItem[]
   /** 用户编辑过的 beat（提交剧本后填入） */
   draftBeats: DraftBeat[]
-  /** 用户确认后的 beat（喂给视频生成） */
+  /** 用户确认后的 beat（喂给视频生成），仅当前一轮 */
   confirmedBeats: Beat[]
   /** 已生成的 clip 列表（每个 beat 对应若干 shot → 若干 clip） */
   generatedClips: ClipView[]
+  /** 历史剧本：每一项是一轮已确认的 Beat 列表（顺序：最旧 → 最新）。
+   *  每当用户点击"确认并开始生成"时，把上一轮的 confirmedBeats 追加到这里。
+   *  仅作只读记录，不会再用于视频生成；UI 折叠显示在剧本面板顶部。 */
+  scriptHistory: Beat[][]
   error?: string
   startedAt: number
 }

@@ -1,6 +1,7 @@
 node_modules/
 dist/
 server/cache/
+server/data/
 data/hls/
 *.log
 .env

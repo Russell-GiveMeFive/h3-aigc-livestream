@@ -15,6 +15,7 @@ export class WorkflowStore {
       draftBeats: [],
       confirmedBeats: [],
       generatedClips: [],
+      scriptHistory: [],
       startedAt: Date.now(),
     }
     this.map.set(roomId, init)

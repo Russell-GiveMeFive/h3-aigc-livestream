@@ -104,6 +104,10 @@ export default function Workbench({
   const clipCount = clips.length
   const canCollect = COLLECT_ALLOWED.has(phase)
   const collectBlockReason = canCollect ? '' : '当前阶段不可重新收集弹幕（避免清空已生成片段）'
+  // 工作流一旦离开 idle（已点击启动），启动按钮置灰，避免重复启动造成状态机歧义
+  const isStarted = phase !== 'idle'
+  // 历史剧本：上一轮（及更早）已确认的剧本，只读、折叠在面板顶部
+  const scriptHistory = wf?.scriptHistory ?? []
 
   const dmFeed = useMemo<DanmakuView[]>(
     () =>
@@ -118,7 +122,11 @@ export default function Workbench({
 
   // 由弹幕生成的剧本：在 reviewing_beats 时可编辑，其余只读
   const beatsEditable = phase === 'reviewing_beats' || phase === 'generating_script'
-  const showBeatsPanel = editedBeats.length > 0 || phase === 'reviewing_beats' || phase === 'generating_script'
+  const showBeatsPanel =
+    editedBeats.length > 0 ||
+    scriptHistory.length > 0 ||
+    phase === 'reviewing_beats' ||
+    phase === 'generating_script'
 
   return (
     <div className="workbench">
@@ -147,8 +155,13 @@ export default function Workbench({
             <option value="768P">768P · 更清晰 / 更高成本</option>
           </select>
           <div className="actions" style={{ marginTop: 12 }}>
-            <button className="primary" disabled={!sessionId} onClick={onStartWizard}>
-              ▶ 启动
+            <button
+              className="primary"
+              disabled={!sessionId || isStarted}
+              onClick={onStartWizard}
+              title={isStarted ? '工作流进行中，点击右侧■重置后可重新启动' : undefined}
+            >
+              {isStarted ? '已启动' : '▶ 启动'}
             </button>
             <button className="danger" disabled={!roomId} onClick={onResetWorkflow}>
               ■ 重置
@@ -314,12 +327,6 @@ export default function Workbench({
                   🆕 新一轮
                 </button>
               )}
-              <button
-                onClick={onGenerateClips}
-                disabled={busy !== null || phase === 'generating_clips' || !editedBeats.length}
-              >
-                {busy === 'generate' || phase === 'generating_clips' ? '生成中…' : '🔁 重新入队'}
-              </button>
             </div>
           </div>
           <div className="preview-stack" style={{ marginTop: 8 }}>
@@ -344,6 +351,46 @@ export default function Workbench({
         {/* 由弹幕生成的剧本（中下） */}
         {showBeatsPanel && (
           <Panel title={`由弹幕生成的剧本 (${editedBeats.length})`}>
+            {/* 历史剧本：上一轮及更早的已确认剧本，只读、折叠在顶部 */}
+            {scriptHistory.length > 0 && (
+              <details className="script-history">
+                <summary className="script-history-summary">
+                  📜 历史剧本（{scriptHistory.length} 轮 · 共{' '}
+                  {scriptHistory.reduce((n, beats) => n + beats.length, 0)} 拍）
+                </summary>
+                <div className="script-history-body">
+                  {scriptHistory.map((roundBeats, ri) => (
+                    <section key={ri} className="script-history-round">
+                      <header className="script-history-round-head">
+                        第 {ri + 1} 轮 · {roundBeats.length} 拍
+                      </header>
+                      {roundBeats.map((b) => (
+                        <article key={b.id} className="beat-card beat-card-frozen">
+                          <header className="beat-head">
+                            <span className="beat-no">
+                              {String(ri + 1).padStart(2, '0')}
+                            </span>
+                            <span className="beat-summary">{b.summary}</span>
+                            <span className="beat-meta">
+                              {b.shots.length} 拍 ·{' '}
+                              {b.shots.reduce((a, s) => a + s.duration, 0)}s
+                            </span>
+                          </header>
+                          {b.shots.map((s) => (
+                            <div className="beat-shot-row" key={s.id}>
+                              <span className="shot-chip">
+                                {s.id} · {s.duration}s
+                              </span>
+                              <p className="shot-prompt">{s.prompt}</p>
+                            </div>
+                          ))}
+                        </article>
+                      ))}
+                    </section>
+                  ))}
+                </div>
+              </details>
+            )}
             {!editedBeats.length && (
               <div className="empty-hint">尚无剧本。先在左侧弹幕队列勾选条目，再点击"提交生成"。</div>
             )}

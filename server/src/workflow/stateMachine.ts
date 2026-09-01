@@ -71,7 +71,7 @@ export function applyAction(
 ): WorkflowState {
   // reset 是无条件允许
   if (action === 'reset') {
-    return { ...state, phase: 'idle', collectedDanmaku: [], draftBeats: [], confirmedBeats: [], generatedClips: [], error: undefined }
+    return { ...state, phase: 'idle', collectedDanmaku: [], draftBeats: [], confirmedBeats: [], generatedClips: [], scriptHistory: [], error: undefined }
   }
   if (action === 'fail') {
     return { ...state, phase: 'error', error: detail ?? state.error }
