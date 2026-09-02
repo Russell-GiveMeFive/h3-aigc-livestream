@@ -1,6 +1,8 @@
 import type { WorkflowPhase, WorkflowState } from '@h3/protocol/types'
 
-/** 用户/系统在工作流上能发出的所有动作（纯类型，便于扩展） */
+/** 用户/系统在工作流上能发出的所有动作（纯类型，便于扩展）
+ *  注意：'collect' 已废弃——弹幕流式推送后，主播通过抓取按钮单条入库，不再批量 collect。
+ *  保留字面量仅为兼容旧 selftest/单测；UI 不再触发该 action。 */
 export type WorkflowAction =
   | 'collect'
   | 'submit_danmaku'
@@ -19,14 +21,13 @@ export interface TransitionContext {
 
 /** 允许的阶段迁移图：从 → to[] */
 const ALLOWED: Record<WorkflowPhase, ReadonlyArray<WorkflowPhase>> = {
-  idle: ['collecting_danmaku', 'error'],
-  collecting_danmaku: ['reviewing_danmaku', 'error'],
+  idle: ['reviewing_danmaku', 'error'],
   reviewing_danmaku: ['generating_script', 'idle', 'error'],
   generating_script: ['reviewing_beats', 'error'],
   reviewing_beats: ['generating_clips', 'idle', 'error'],
   generating_clips: ['completed', 'error'],
-  completed: ['idle', 'collecting_danmaku'], // 允许用户重启新一轮（idle 重置 / collecting 直接续轮）
-  error: ['idle'], // 允许用户重置
+  completed: ['idle', 'reviewing_danmaku'],
+  error: ['idle'],
 }
 
 /** canTransition：检查 from→to 是否在状态图内允许 */
@@ -38,9 +39,9 @@ export function canTransition(from: WorkflowPhase, to: WorkflowPhase): boolean {
 export function nextPhase(current: WorkflowPhase, action: WorkflowAction): WorkflowPhase | null {
   switch (action) {
     case 'collect':
-      // collect 同样可以重入（用户重新拉一批弹幕）；宽放到 reviewing_danmaku
-      if (current === 'idle' || current === 'completed' || current === 'error') return 'collecting_danmaku'
-      if (current === 'collecting_danmaku' || current === 'reviewing_danmaku') return current
+      // 已废弃：保留分支仅为兼容旧 selftest/单测；统一走 reviewing_danmaku
+      if (current === 'idle' || current === 'completed' || current === 'error') return 'reviewing_danmaku'
+      if (current === 'reviewing_danmaku') return current
       return null
     case 'submit_danmaku':
       if (current === 'reviewing_danmaku') return 'generating_script'
@@ -104,9 +105,8 @@ export function transitionTo(state: WorkflowState, target: WorkflowPhase, patch?
 
 /** 用于 UI 高亮当前阶段对应"操作"的辅助映射（按需扩展） */
 export const PHASE_HINT: Record<WorkflowPhase, string> = {
-  idle: '点击下方按钮开始新工作流',
-  collecting_danmaku: '正在收集弹幕…',
-  reviewing_danmaku: '请审阅弹幕，挑选用于剧本的输入',
+  idle: '点击下方按钮启动直播流',
+  reviewing_danmaku: '请在右侧抓取弹幕加入队列，或手动添加',
   generating_script: '正在调用文本模型拆分剧本…',
   reviewing_beats: '请编辑各拍，确认后生成视频',
   generating_clips: '正在生成视频片段…',

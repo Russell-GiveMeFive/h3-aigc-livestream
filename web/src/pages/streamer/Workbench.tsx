@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
-import type { Danmaku as DanmakuView, DraftBeat, VideoResolution, WorkflowPhase, WorkflowState } from '../../types'
+import { useMemo, useRef, useState } from 'react'
+import type { Danmaku as DanmakuView, DraftBeat, LiveDanmakuStatus, VideoResolution, WorkflowPhase, WorkflowState } from '../../types'
 import { Chip, Panel } from '../../components/ui'
 import ClipWall from '../../components/ClipWall'
 import DanmakuFeed from '../../components/DanmakuFeed'
@@ -18,6 +18,9 @@ interface WorkbenchProps {
   editedBeats: DraftBeat[]
   activeUrl: string | null
   roomId: string | null
+  /** 右栏实时弹幕流（来自 store） */
+  liveDanmaku: DanmakuView[]
+  liveStreamStatus: LiveDanmakuStatus
   // setter
   setPremise: (v: string) => void
   setResolution: (v: VideoResolution) => void
@@ -25,24 +28,24 @@ interface WorkbenchProps {
   setActiveUrl: (url: string | null) => void
   // workflow handlers
   onStartWizard: () => void
-  onCollect: () => void
   onSubmitDm: () => void
   onAddManual: () => void
   onClearQueue: () => void
   onDeleteDm: (id: string) => void
   onToggleSelect: (id: string) => void
-  onPickLiveDm: (item: DanmakuView) => void
+  onCaptureDm: (item: DanmakuView) => void
   onUpdateBeatSummary: (idx: number, summary: string) => void
   onUpdateShotPrompt: (bi: number, si: number, prompt: string) => void
   onConfirmBeats: () => void
   onGenerateClips: () => void
   onResetWorkflow: () => void
   onRecoverWorkflow: () => void
+  /** completed 阶段：归档并清空队列（流继续） */
+  onArchiveAndReset: () => void
 }
 
 const PHASE_ORDER: WorkflowPhase[] = [
   'idle',
-  'collecting_danmaku',
   'reviewing_danmaku',
   'generating_script',
   'reviewing_beats',
@@ -51,13 +54,9 @@ const PHASE_ORDER: WorkflowPhase[] = [
   'error',
 ]
 
-/** 允许"获取弹幕"的阶段：idle/error 起步、completed 下一轮。其他阶段（reviewing/generating）禁，避免误清。 */
-const COLLECT_ALLOWED: ReadonlySet<WorkflowPhase> = new Set(['idle', 'completed', 'error'])
-
 function phaseLabel(p: WorkflowPhase): string {
   return {
     idle: '空闲',
-    collecting_danmaku: '收集中',
     reviewing_danmaku: '审阅弹幕',
     generating_script: '生成剧本',
     reviewing_beats: '审阅拍',
@@ -78,82 +77,106 @@ export default function Workbench({
   editedBeats,
   activeUrl,
   roomId,
+  liveDanmaku,
+  liveStreamStatus,
   setPremise,
   setResolution,
   setManualDmText,
   setActiveUrl,
   onStartWizard,
-  onCollect,
   onSubmitDm,
   onAddManual,
   onClearQueue,
   onDeleteDm,
   onToggleSelect,
-  onPickLiveDm,
+  onCaptureDm,
   onUpdateBeatSummary,
   onUpdateShotPrompt,
   onConfirmBeats,
   onGenerateClips,
   onResetWorkflow,
   onRecoverWorkflow,
+  onArchiveAndReset,
 }: WorkbenchProps) {
   const phase = wf?.phase ?? 'idle'
   const phaseNo = useMemo(() => PHASE_ORDER.indexOf(phase), [phase])
   const collectedDm = wf?.collectedDanmaku ?? []
   const clips = wf?.generatedClips ?? []
   const clipCount = clips.length
-  const canCollect = COLLECT_ALLOWED.has(phase)
-  const collectBlockReason = canCollect ? '' : '当前阶段不可重新收集弹幕（避免清空已生成片段）'
   // 工作流一旦离开 idle（已点击启动），启动按钮置灰，避免重复启动造成状态机歧义
   const isStarted = phase !== 'idle'
   // 历史剧本：上一轮（及更早）已确认的剧本，只读、折叠在面板顶部
   const scriptHistory = wf?.scriptHistory ?? []
+  // 已抓取 id 集合：来自 collectedDm（一旦进入队列就 disabled 防止重复抓）
+  const capturedIds = useMemo(() => new Set(collectedDm.map((d) => d.id)), [collectedDm])
 
-  // 预览区高度：用户可拖动调整，持久化到 localStorage
-  const PREVIEW_MIN = 220
+  // 预览区宽高：右下角可拖拽调整，持久化到 localStorage
+  // 中列 grid 用 auto，右栏自动位移；宽度的 min/max 受屏幕可用空间限制
+  const PREVIEW_MIN_H = 220
+  const PREVIEW_MIN_W = 360
   const PREVIEW_MAX_GAP = 240 // 屏幕高度 - 此值 = 预览最大高度
-  const PREVIEW_DEFAULT = 380
-  const PREVIEW_LS_KEY = 'wb:preview-height'
-  const [previewHeight, setPreviewHeight] = useState<number>(() => {
-    if (typeof window === 'undefined') return PREVIEW_DEFAULT
-    const saved = Number(window.localStorage.getItem(PREVIEW_LS_KEY) ?? 0)
-    if (saved >= PREVIEW_MIN) return Math.min(saved, window.innerHeight - PREVIEW_MAX_GAP)
-    return Math.min(PREVIEW_DEFAULT, Math.max(PREVIEW_MIN, window.innerHeight - PREVIEW_MAX_GAP))
-  })
-  const dragRef = useRef<{ y: number; h: number } | null>(null)
+  const PREVIEW_LEFT_RESERVE = 480 // 留给左控制栈 + gap 的最小宽度
+  const PREVIEW_RIGHT_RESERVE = 340 // 留给右弹幕栏(300) + 两个 gap(14+14) + 余量
+  const PREVIEW_DEFAULT_H = 380
+  const PREVIEW_DEFAULT_W = 640
+  const PREVIEW_LS_KEY = 'wb:preview-size'
+  function readPersisted(): { w: number; h: number } {
+    if (typeof window === 'undefined') return { w: PREVIEW_DEFAULT_W, h: PREVIEW_DEFAULT_H }
+    try {
+      const raw = window.localStorage.getItem(PREVIEW_LS_KEY)
+      if (raw) {
+        const obj = JSON.parse(raw) as { w?: number; h?: number }
+        if (typeof obj.w === 'number' && typeof obj.h === 'number') {
+          return { w: obj.w, h: obj.h }
+        }
+      }
+    } catch { /* noop */ }
+    return { w: PREVIEW_DEFAULT_W, h: PREVIEW_DEFAULT_H }
+  }
+  const initial = readPersisted()
+  const [previewHeight, setPreviewHeight] = useState<number>(initial.h)
+  const [previewWidth, setPreviewWidth] = useState<number>(initial.w)
+  const dragRef = useRef<{ x: number; y: number; w: number; h: number } | null>(null)
   const [dragging, setDragging] = useState(false)
-  function clampPreview(n: number): number {
-    return Math.min(Math.max(PREVIEW_MIN, n), Math.max(PREVIEW_MIN, window.innerHeight - PREVIEW_MAX_GAP))
+  function maxPreviewH(): number {
+    return Math.max(PREVIEW_MIN_H, window.innerHeight - PREVIEW_MAX_GAP)
+  }
+  function maxPreviewW(): number {
+    return Math.max(PREVIEW_MIN_W, window.innerWidth - PREVIEW_LEFT_RESERVE - PREVIEW_RIGHT_RESERVE)
+  }
+  function clampH(n: number): number {
+    return Math.min(Math.max(PREVIEW_MIN_H, n), maxPreviewH())
+  }
+  function clampW(n: number): number {
+    return Math.min(Math.max(PREVIEW_MIN_W, n), maxPreviewW())
   }
   function onResizeStart(e: React.PointerEvent<HTMLDivElement>) {
     e.preventDefault()
-    dragRef.current = { y: e.clientY, h: previewHeight }
+    dragRef.current = { x: e.clientX, y: e.clientY, w: previewWidth, h: previewHeight }
     setDragging(true)
     try { (e.target as HTMLElement).setPointerCapture(e.pointerId) } catch { /* noop */ }
   }
   function onResizeMove(e: React.PointerEvent<HTMLDivElement>) {
     if (!dragRef.current) return
-    const next = clampPreview(dragRef.current.h + (e.clientY - dragRef.current.y))
-    setPreviewHeight(next)
+    const nextW = clampW(dragRef.current.w + (e.clientX - dragRef.current.x))
+    const nextH = clampH(dragRef.current.h + (e.clientY - dragRef.current.y))
+    setPreviewWidth(nextW)
+    setPreviewHeight(nextH)
   }
   function onResizeEnd(e: React.PointerEvent<HTMLDivElement>) {
     if (!dragRef.current) return
     dragRef.current = null
     setDragging(false)
     try { (e.target as HTMLElement).releasePointerCapture(e.pointerId) } catch { /* noop */ }
-    try { window.localStorage.setItem(PREVIEW_LS_KEY, String(previewHeight)) } catch { /* noop */ }
+    try {
+      window.localStorage.setItem(
+        PREVIEW_LS_KEY,
+        JSON.stringify({ w: previewWidth, h: previewHeight }),
+      )
+    } catch { /* noop */ }
   }
 
-  const dmFeed = useMemo<DanmakuView[]>(
-    () =>
-      collectedDm.map((d) => ({
-        id: d.id,
-        user: d.user,
-        text: d.text,
-        ts: d.ts,
-      })),
-    [collectedDm],
-  )
+  const dmFeed = liveDanmaku
 
   // 由弹幕生成的剧本：在 reviewing_beats 时可编辑，其余只读
   const beatsEditable = phase === 'reviewing_beats' || phase === 'generating_script'
@@ -196,7 +219,7 @@ export default function Workbench({
               onClick={onStartWizard}
               title={isStarted ? '工作流进行中，点击右侧■重置后可重新启动' : undefined}
             >
-              {isStarted ? '已启动' : '▶ 启动'}
+              {isStarted ? '已启动' : '▶ 启动直播流'}
             </button>
             <button className="danger" disabled={!roomId} onClick={onResetWorkflow}>
               ■ 重置
@@ -244,7 +267,7 @@ export default function Workbench({
           <div className="dm-list">
             {!collectedDm.length ? (
               <div className="empty-hint">
-                队列为空。点击下方"获取弹幕"拉取，或在"手动剧情"中添加。
+                队列为空。在右侧实时弹幕点 📥 抓取，或在"手动剧情"中添加。
               </div>
             ) : (
               collectedDm.map((d) => (
@@ -266,21 +289,6 @@ export default function Workbench({
             )}
           </div>
           <div className="dm-queue-actions">
-            <div className="dm-queue-actions-row">
-              <button
-                disabled={busy !== null || !premise.trim() || !sessionId || !canCollect}
-                onClick={onCollect}
-                title={collectBlockReason}
-              >
-                {busy === 'collect' ? '收集中…' : '获取弹幕'}
-              </button>
-              <button
-                disabled={!collectedDm.length || busy !== null}
-                onClick={onClearQueue}
-              >
-                清空队列
-              </button>
-            </div>
             <button
               className="primary dm-queue-submit"
               disabled={!selectedDmIds.size || busy !== null}
@@ -332,8 +340,9 @@ export default function Workbench({
         </Panel>
       </div>
 
-      {/* ════════ 中：视频预览 + 剧本 ════════ */}
-      <div className="workbench-mid">
+      {/* ════════ 中+右：flex 容器，让右栏紧贴预览右边缘 ════════ */}
+      <div className="workbench-main">
+        <div className="workbench-mid" style={{ width: previewWidth }}>
         {phase === 'error' && wf?.error && (
           <div className="error-banner" role="alert" aria-live="assertive">
             <span className="error-icon">⚠</span>
@@ -357,9 +366,9 @@ export default function Workbench({
               {phase === 'completed' && (
                 <button
                   disabled={busy !== null || !sessionId}
-                  onClick={onCollect}
+                  onClick={onArchiveAndReset}
                 >
-                  🆕 新一轮
+                  🆕 归档并清空队列
                 </button>
               )}
             </div>
@@ -382,15 +391,14 @@ export default function Workbench({
             <ClipWall clips={clips} activeUrl={activeUrl} onSelect={setActiveUrl} />
           </div>
           <div
-            className={`resize-handle${dragging ? ' dragging' : ''}`}
+            className={`resize-corner${dragging ? ' dragging' : ''}`}
             onPointerDown={onResizeStart}
             onPointerMove={onResizeMove}
             onPointerUp={onResizeEnd}
             onPointerCancel={onResizeEnd}
             role="separator"
-            aria-orientation="horizontal"
-            aria-label="拖动调整视频预览高度"
-            title="拖动调整高度"
+            aria-label="拖动右下角调整视频预览宽高"
+            title="拖动右下角调整宽高"
           >
             <span className="resize-grip" />
           </div>
@@ -492,14 +500,22 @@ export default function Workbench({
         )}
       </div>
 
-      {/* ════════ 右：实时弹幕（贯穿全高） ════════ */}
+      {/* ════════ 右：实时弹幕（紧贴预览右边缘） ════════ */}
       <div className="workbench-right">
         <Panel title="实时弹幕">
           <p className="hint dim" style={{ margin: '0 0 8px' }}>
-            点击条目可加入下方弹幕队列
+            点右侧 📥 抓取 即可加入下方队列
           </p>
-          <DanmakuFeed items={dmFeed} onPick={onPickLiveDm} compact showHeader={false} />
+          <DanmakuFeed
+            items={dmFeed}
+            onCapture={onCaptureDm}
+            capturedIds={capturedIds}
+            liveStatus={liveStreamStatus}
+            compact
+            showHeader={false}
+          />
         </Panel>
+      </div>
       </div>
     </div>
   )

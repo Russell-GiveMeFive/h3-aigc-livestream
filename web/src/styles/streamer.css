@@ -29,6 +29,7 @@
 
 /* ── 预览区 ── */
 .preview-panel {
+  position: relative; /* resize-corner 绝对定位的锚 */
   padding-bottom: 4px; /* 留出 resize handle 空间 */
 }
 
@@ -38,7 +39,7 @@
   gap: 12px;
   min-width: 0; /* 关键：grid 子项默认 min-content，video 无法撑开 */
   width: 100%;
-  overflow: hidden; /* 高度由 JS 控制，超出隐藏避免视频溢出 */
+  overflow: hidden; /* 宽高由 JS 控制，超出隐藏避免视频溢出 */
 }
 
 .preview-stack .filmstrip {
@@ -77,32 +78,37 @@
   border-radius: 6px;
 }
 
-/* 预览区底部拖动手柄：拖动改 .preview-stack 高度 */
-.resize-handle {
-  height: 10px;
-  margin: 6px -16px -8px; /* 横向溢出到 panel 边沿 */
-  cursor: ns-resize;
+/* 预览区右下角拖动手柄：拖动改 .preview-stack 宽+高 */
+.resize-corner {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: 18px;
+  height: 18px;
+  cursor: nwse-resize;
   display: flex;
   align-items: center;
   justify-content: center;
   background: transparent;
   transition: background 120ms;
   touch-action: none; /* 阻止 pointer 触屏滚动干扰 */
+  z-index: 2;
 }
-.resize-handle:hover,
-.resize-handle.dragging {
-  background: rgba(255, 180, 84, 0.08);
+.resize-corner:hover,
+.resize-corner.dragging {
+  background: rgba(255, 180, 84, 0.12);
 }
-.resize-handle .resize-grip {
-  width: 40px;
-  height: 2px;
-  background: var(--line);
-  border-radius: 1px;
-  transition: background 120ms;
+.resize-corner .resize-grip {
+  width: 10px;
+  height: 10px;
+  border-right: 2px solid var(--line);
+  border-bottom: 2px solid var(--line);
+  border-bottom-right-radius: 2px;
+  transition: border-color 120ms;
 }
-.resize-handle:hover .resize-grip,
-.resize-handle.dragging .resize-grip {
-  background: var(--amber);
+.resize-corner:hover .resize-grip,
+.resize-corner.dragging .resize-grip {
+  border-color: var(--amber);
 }
 
 .clip-wall {
@@ -371,12 +377,40 @@
 /* ════════════════════════════════════════════════════════
    工作台 (Tab=workbench)：左控制栈 + 中预览/剧本 + 右实时弹幕
    ════════════════════════════════════════════════════════ */
+/* 工作台标签页：让 .layout 撑满 viewport，左右无空白、底部状态条贴边。
+   StreamerPage 在 .layout 上挂了 data-tab={tab}，这里作为选择器命中。 */
+.layout[data-tab='workbench'] {
+  max-width: none;
+  min-height: calc(100vh - 60px); /* 减去顶部 nav 高度，留状态条位置 */
+  padding: 0;
+  margin: 0;
+  padding-bottom: 36px; /* 给状态条留 36px 视觉空间 */
+}
+
+/* 工作台标签页：状态条改为 fixed 贴底，宽度撑满 viewport */
+.layout[data-tab='workbench'] .status-bar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+}
+
 .workbench {
   display: grid;
-  /* 左 450 控制栈(1.5x 加宽) / 中 1fr 预览+剧本 / 右 300 实时弹幕(贯穿全高) */
-  grid-template-columns: 450px minmax(0, 1fr) 300px;
+  /* 左 450 控制栈 / 右 auto=workbench-main flex 容器(preview 宽 + 右弹幕 300)；
+     把中+右绑成 flex 容器后，右弹幕栏会紧贴预览右边缘，而不是相对整个 workbench 固定 300 */
+  grid-template-columns: 450px auto;
   gap: 14px;
   align-items: stretch;
+  padding: 14px 16px 12px;
+}
+
+.workbench-main {
+  display: flex;
+  flex-direction: row;
+  gap: 14px;
+  align-items: stretch;
+  min-width: 0;
 }
 
 .workbench-left {
@@ -390,13 +424,17 @@
   display: flex;
   flex-direction: column;
   gap: 12px;
+  /* 宽由 JS 控制（拖动 .preview-panel 右下角）—— shrink 让容器内子元素不溢出 */
   min-width: 0;
+  flex-shrink: 0;
 }
 
 .workbench-right {
   display: flex;
   flex-direction: column;
   gap: 12px;
+  width: 300px;
+  flex-shrink: 0;
   min-width: 0;
 }
 
@@ -793,9 +831,15 @@
   .workbench {
     grid-template-columns: 1fr;
   }
-  .workbench-col-left {
-    position: static;
-    max-height: none;
+  .workbench-main {
+    flex-direction: column;
+  }
+  .workbench-right {
+    width: 100%;
+  }
+  /* 窄屏：preview-panel 强制铺满，忽略 JS 设的宽度 */
+  .workbench-mid {
+    width: 100% !important;
   }
   .preview-stack .filmstrip {
     grid-template-columns: repeat(2, minmax(0, 1fr));

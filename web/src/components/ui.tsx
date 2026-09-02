@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react'
+import type { CSSProperties, ReactNode } from 'react'
 
 /** 通用 UI 元件：Chip / Stat / Panel / StatusDot */
 
@@ -41,9 +41,19 @@ export function Stat({
   )
 }
 
-export function Panel({ title, children, className = '' }: { title?: string; children: ReactNode; className?: string }) {
+export function Panel({
+  title,
+  children,
+  className = '',
+  style,
+}: {
+  title?: string
+  children: ReactNode
+  className?: string
+  style?: CSSProperties
+}) {
   return (
-    <section className={`panel${className ? ` ${className}` : ''}`}>
+    <section className={`panel${className ? ` ${className}` : ''}`} style={style}>
       {title && <h2 className="section-title">{title}</h2>}
       {children}
     </section>

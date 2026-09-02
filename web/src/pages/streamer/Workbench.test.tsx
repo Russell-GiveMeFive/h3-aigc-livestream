@@ -35,47 +35,29 @@ function makeProps(over: Partial<Parameters<typeof Workbench>[0]> = {}) {
     editedBeats: [] as DraftBeat[],
     activeUrl: null,
     roomId: 'r1',
+    liveDanmaku: [] as Danmaku[],
+    liveStreamStatus: 'idle' as const,
     setPremise: noop,
     setResolution: noop,
     setManualDmText: noop,
     setActiveUrl: noop,
     onStartWizard: noop,
-    onCollect: noop,
     onSubmitDm: noop,
     onAddManual: noop,
     onClearQueue: noop,
     onDeleteDm: noop,
     onToggleSelect: noop,
-    onPickLiveDm: noop as (i: Danmaku) => void,
+    onCaptureDm: noop as (i: Danmaku) => void,
     onUpdateBeatSummary: noop,
     onUpdateShotPrompt: noop,
     onConfirmBeats: noop,
     onGenerateClips: noop,
     onResetWorkflow: noop,
     onRecoverWorkflow: noop,
+    onArchiveAndReset: noop,
     ...over,
   }
 }
-
-describe('Workbench collect button disabled rule', () => {
-  // 收集按钮在 reviewing_danmaku / reviewing_beats / generating_* 阶段必须禁掉，
-  // 防止用户重 collect 触发 server 端 soft reset 把已生成片段抹掉（bug a）。
-  it.each([
-    ['idle', false],
-    ['completed', false],
-    ['error', false],
-    ['collecting_danmaku', true],
-    ['reviewing_danmaku', true],
-    ['generating_script', true],
-    ['reviewing_beats', true],
-    ['generating_clips', true],
-  ] as const)('phase=%s → 获取弹幕按钮 disabled=%s', (phase, expected) => {
-    render(<Workbench {...makeProps({ wf: baseWf(phase) })} />)
-    const btn = screen.getByRole('button', { name: '获取弹幕' })
-    if (expected) expect(btn).toBeDisabled()
-    else expect(btn).not.toBeDisabled()
-  })
-})
 
 describe('Workbench clip select wiring (bug c)', () => {
   it('点击缩略图会调用 setActiveUrl(url)', async () => {
@@ -173,17 +155,16 @@ describe('Workbench 剧本历史（scriptHistory）', () => {
 })
 
 describe('Workbench 启动按钮状态机联动', () => {
-  // idle + 有 sessionId → 可点 + 显示 "▶ 启动"
-  it('phase=idle, 有 session → 启动按钮可点击且显示"▶ 启动"', () => {
+  // idle + 有 sessionId → 可点 + 显示 "▶ 启动直播流"
+  it('phase=idle, 有 session → 启动按钮可点击且显示"▶ 启动直播流"', () => {
     render(<Workbench {...makeProps({ wf: baseWf('idle'), sessionId: 'sess_1' })} />)
     const btn = screen.getByRole('button', { name: /启动/ })
     expect(btn).toBeEnabled()
-    expect(btn).toHaveTextContent('▶ 启动')
+    expect(btn).toHaveTextContent('▶ 启动直播流')
   })
 
   // 离开 idle（任意 phase）→ 置灰 + 显示 "已启动"
   it.each([
-    'collecting_danmaku',
     'reviewing_danmaku',
     'generating_script',
     'reviewing_beats',
@@ -211,6 +192,37 @@ describe('Workbench 启动按钮状态机联动', () => {
     rerender(<Workbench {...makeProps({ wf: baseWf('idle') })} />)
     const btn = screen.getByRole('button', { name: /启动/ })
     expect(btn).toBeEnabled()
-    expect(btn).toHaveTextContent('▶ 启动')
+    expect(btn).toHaveTextContent('▶ 启动直播流')
+  })
+})
+
+describe('Workbench 抓取按钮联动', () => {
+  it('右栏流式弹幕渲染 onCapture 按钮，点击触发 onCaptureDm', async () => {
+    const onCaptureDm = vi.fn()
+    const live: Danmaku[] = [
+      { id: 'd1', user: '路人甲', text: '换场景吧', ts: 1000 },
+      { id: 'd2', user: '麦麦', text: '给个特写', ts: 2000 },
+    ]
+    render(<Workbench {...makeProps({ liveDanmaku: live, onCaptureDm })} />)
+    const btns = screen.getAllByRole('button', { name: /抓取弹幕/ })
+    expect(btns).toHaveLength(2)
+    await userEvent.click(btns[0])
+    expect(onCaptureDm).toHaveBeenCalledWith(expect.objectContaining({ id: 'd1', text: '换场景吧' }))
+  })
+
+  it('已抓取的弹幕按钮变 ✓ 且 disabled', () => {
+    const wf: WorkflowState = {
+      ...baseWf('reviewing_danmaku'),
+      collectedDanmaku: [
+        { id: 'd1', user: '路人甲', text: '换场景吧', ts: 1000, source: 'douyin' },
+      ],
+    }
+    const live: Danmaku[] = [
+      { id: 'd1', user: '路人甲', text: '换场景吧', ts: 1000 },
+      { id: 'd2', user: '麦麦', text: '给个特写', ts: 2000 },
+    ]
+    render(<Workbench {...makeProps({ wf, liveDanmaku: live })} />)
+    expect(screen.getByRole('button', { name: '已抓取' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: /抓取弹幕：给个特写/ })).not.toBeDisabled()
   })
 })

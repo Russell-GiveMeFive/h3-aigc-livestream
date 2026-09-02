@@ -114,6 +114,15 @@ export interface StartResp {
 
 // ── WS 契约：每条都带 `type` 判别字面量，便于消费方窄化 ──
 
+/** 实时弹幕流订阅状态（与 LiveDanmakuStreamer 对应，HTTP/WS 共享） */
+export type LiveDanmakuStatus =
+  | 'idle'
+  | 'connecting'
+  | 'live'
+  | 'reconnecting'
+  | 'closed'
+  | 'mock'
+
 export type WsEvent =
   | { type: 'log'; msg: string }
   | { type: 'clip'; id: string; shotId: string; duration: number; url: string }
@@ -122,6 +131,10 @@ export type WsEvent =
   | { type: 'error'; msg: string }
   | { type: 'danmaku'; id: string; user: string; text: string; ts: number }
   | { type: 'workflow'; phase: WorkflowPhase; detail?: string }
+  /** 服务端 → 浏览器：每条 douyin 弹幕的增量推送（不进 ring buffer 重放） */
+  | { type: 'liveDanmaku'; item: DanmakuItem }
+  /** 服务端 → 浏览器：实时流订阅状态变化 */
+  | { type: 'liveDanmakuStatus'; status: LiveDanmakuStatus; detail?: string }
 
 /** 弹幕来源标识 */
 export type DanmakuSource = 'douyin' | 'manual' | 'mock'
@@ -139,10 +152,11 @@ export interface DanmakuItem {
   relevant?: boolean
 }
 
-/** 手动工作流的阶段机（替代原自动循环 Director） */
+/** 手动工作流的阶段机（替代原自动循环 Director）。
+ *  流式弹幕改造后取消 'collecting_danmaku'：弹幕流由 LiveDanmakuStreamer 持续推送，
+ *  用户在右栏点"抓取"按钮直接落 'reviewing_danmaku'，无需批量收集阶段。 */
 export type WorkflowPhase =
   | 'idle'
-  | 'collecting_danmaku'
   | 'reviewing_danmaku'
   | 'generating_script'
   | 'reviewing_beats'

@@ -1,5 +1,13 @@
 import type { SessionResp, StartResp, StreamStatus } from './types'
-import type { AppConfig, ConfigResp, DanmakuItem, DraftBeat, HistoryEntry, WorkflowState } from '@h3/protocol/types'
+import type {
+  AppConfig,
+  ConfigResp,
+  DanmakuItem,
+  DraftBeat,
+  HistoryEntry,
+  LiveDanmakuStatus,
+  WorkflowState,
+} from '@h3/protocol/types'
 
 export async function api<T = unknown>(path: string, init?: RequestInit): Promise<T> {
   const merged: RequestInit = {
@@ -78,6 +86,34 @@ export function getWorkflow(roomId: string): Promise<WorkflowState> {
   return api<WorkflowState>(`/api/workflow/${encodeURIComponent(roomId)}`)
 }
 
+// ── 实时弹幕流 API（LiveDanmakuStreamer） ──
+
+export function startLiveDanmaku(
+  roomId: string,
+): Promise<{ status: LiveDanmakuStatus; source: 'douyin' | 'mock' | 'none' }> {
+  return api('/api/workflow/live-danmaku/start', {
+    method: 'POST',
+    body: JSON.stringify({ roomId }),
+  })
+}
+
+export function stopLiveDanmaku(roomId: string): Promise<{ ok: boolean }> {
+  return api<{ ok: boolean }>('/api/workflow/live-danmaku/stop', {
+    method: 'POST',
+    body: JSON.stringify({ roomId }),
+  })
+}
+
+export function getLiveDanmakuStatus(
+  roomId: string,
+): Promise<{ status: LiveDanmakuStatus; source: 'douyin' | 'mock' | 'none' }> {
+  return api(`/api/workflow/live-danmaku/status?room=${encodeURIComponent(roomId)}`)
+}
+
+/**
+ * @deprecated 批量 collect 已废弃。LiveDanmakuStreamer 持续推送 + 右栏抓取按钮替代。
+ * 保留仅为 selftest/单测。UI 不再调用。
+ */
 export function collectDanmaku(
   sessionId: string,
   roomId: string,

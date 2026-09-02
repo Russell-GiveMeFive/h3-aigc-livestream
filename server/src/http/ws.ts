@@ -33,7 +33,7 @@ export function attachWs(server: http.Server, hub: RoomHub): void {
     const bus = hub.bus(roomId)
     const clientName = `观众${nowId('user').slice(-4)}`
     let lastDanmakuAt = 0
-    const events = ['log', 'clip', 'beat', 'phase', 'error', 'danmaku'] as const
+    const events = ['log', 'clip', 'beat', 'phase', 'error', 'danmaku', 'liveDanmaku', 'liveDanmakuStatus'] as const
     const handlers = new Map<string, (payload: unknown) => void>()
     for (const ev of events) {
       const handler = (payload: unknown) => {

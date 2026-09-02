@@ -18,6 +18,7 @@ export type {
   StartResp,
   DanmakuSource,
   DanmakuItem,
+  LiveDanmakuStatus,
   WorkflowPhase,
   DraftBeat,
   WorkflowState,

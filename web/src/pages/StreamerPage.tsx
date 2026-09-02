@@ -3,21 +3,24 @@ import { useSearchParams } from 'react-router-dom'
 import { useStreamer } from '../stores/streamerStore'
 import {
   addDanmaku,
-  collectDanmaku,
   confirmBeats,
   createSession,
   fetchConfig,
   generateWorkflowClips,
+  getLiveDanmakuStatus,
   getWorkflow,
   recoverWorkflow,
   removeDanmaku,
   resetWorkflow,
+  startLiveDanmaku,
+  stopLiveDanmaku,
   submitDanmaku,
   wsUrl,
 } from '../api'
 import type {
   Danmaku as DanmakuView,
   DraftBeat,
+  LiveDanmakuStatus,
   VideoResolution,
   WorkflowState,
 } from '../types'
@@ -39,7 +42,6 @@ const TABS: { key: TabKey; label: string; icon: string }[] = [
 function phaseLabel(p: WorkflowState['phase']): string {
   return {
     idle: '空闲',
-    collecting_danmaku: '收集中',
     reviewing_danmaku: '审阅弹幕',
     generating_script: '生成剧本',
     reviewing_beats: '审阅拍',
@@ -50,7 +52,22 @@ function phaseLabel(p: WorkflowState['phase']): string {
 }
 
 export default function StreamerPage() {
-  const { sessionId, mock, serverMock, logs, wsConnected, setSession, setServerMock, addLog, setWs } = useStreamer()
+  const {
+    sessionId,
+    mock,
+    serverMock,
+    logs,
+    wsConnected,
+    liveDanmaku,
+    liveStreamStatus,
+    setSession,
+    setServerMock,
+    addLog,
+    setWs,
+    appendLiveDanmaku,
+    setLiveStatus,
+    clearLiveDanmaku,
+  } = useStreamer()
   const [search] = useSearchParams()
 
   // 工作流入参
@@ -112,7 +129,15 @@ export default function StreamerPage() {
       ws.onmessage = (ev) => {
         if (wsRef.current !== ws) return
         try {
-          const d = JSON.parse(ev.data as string) as { type?: string; msg?: string; url?: string; stage?: string }
+          const d = JSON.parse(ev.data as string) as {
+            type?: string
+            msg?: string
+            url?: string
+            stage?: string
+            item?: { id: string; user: string; text: string; ts: number; source?: string }
+            status?: LiveDanmakuStatus
+            detail?: string
+          }
           if (d.type === 'log' && d.msg) {
             addLog(d.msg)
           } else if (d.type === 'clip' && d.url) {
@@ -120,13 +145,33 @@ export default function StreamerPage() {
             setActiveUrl(d.url)
           } else if (d.type === 'error' && d.msg) {
             addLog(`❌ ${d.msg}`, 'err')
+          } else if (d.type === 'liveDanmaku' && d.item && d.item.id) {
+            // 流的 item 一定有 id；source 不一定有 → 补 'douyin'（WS 这条路径只会来自 douyin/mock 订阅）
+            appendLiveDanmaku({
+              id: d.item.id,
+              user: d.item.user,
+              text: d.item.text,
+              ts: d.item.ts,
+              source: (d.item.source as 'douyin' | 'mock' | 'manual' | undefined) ?? 'douyin',
+            })
+          } else if (d.type === 'liveDanmakuStatus' && d.status) {
+            setLiveStatus(d.status)
+            if (d.status === 'live') {
+              addLog(`📡 实时弹幕流已连接`, 'ok', { stage: 'ws' })
+            } else if (d.status === 'mock') {
+              addLog(`🟡 MOCK 流（未配置 douyinRoomId）`, 'warn', { stage: 'ws' })
+            } else if (d.status === 'reconnecting') {
+              addLog(`🟡 弹幕流重连中…${d.detail ? ` (${d.detail})` : ''}`, 'warn', { stage: 'ws' })
+            } else if (d.status === 'closed') {
+              addLog(`🔴 弹幕流已断开`, 'err', { stage: 'ws' })
+            }
           }
         } catch {
           /* ignore */
         }
       }
     },
-    [addLog, setWs],
+    [addLog, appendLiveDanmaku, setLiveStatus, setWs],
   )
 
   const stopPoll = useCallback(() => {
@@ -191,6 +236,20 @@ export default function StreamerPage() {
     addLog(`🧭 工作流开启：房间 ${id}`, 'ok')
     connectWs(id)
     startPoll()
+    // 启动实时弹幕流（mock 或 douyin，取决于 cfg.danmaku.douyinRoomId）
+    void startLiveDanmaku(id)
+      .then((r) => {
+        addLog(
+          r.source === 'mock'
+            ? '🟡 未配置 douyinRoomId → 走 MOCK 流'
+            : `📡 已订阅 douyin 流`,
+          'ok',
+          { stage: 'ws' },
+        )
+      })
+      .catch((e) => {
+        addLog(`💥 启动弹幕流失败: ${(e as Error).message}`, 'err', { stage: 'ws' })
+      })
     void getWorkflow(id)
       .then((s) => setWf(s))
       .catch(() => {
@@ -207,32 +266,28 @@ export default function StreamerPage() {
       })
   }
 
-  const handleCollect = async () => {
+  // "新一轮" = 归档并清空队列（completed 阶段用）：
+  // - 关掉流再重启（避免 refcount 累加）
+  // - reset workflow 把 collectedDanmaku/draftBeats 全清（保留 generatedClips/scriptHistory）
+  const handleArchiveAndReset = async () => {
     const room = ensureRoomId()
-    if (!premise.trim()) {
-      addLog('请先填写剧本前提', 'warn')
-      return
-    }
     if (!sessionId) {
       addLog('请先接入 API Key', 'warn')
       return
     }
-    setBusy('collect')
-    addLog('📥 正在收集弹幕…', 'ok', { stage: 'collect' })
+    setBusy('archive')
+    addLog('🆕 归档并清空队列…', 'ok', { stage: 'sys' })
     try {
-      const resp = await collectDanmaku(sessionId!, room, 5, premise.trim())
-      const next = { ...resp.state, collectedDanmaku: [...(wf?.collectedDanmaku ?? []), ...resp.danmaku] }
+      try { await stopLiveDanmaku(room) } catch { /* ignore */ }
+      try { await startLiveDanmaku(room) } catch { /* ignore */ }
+      await resetWorkflow(room)
+      const next = await getWorkflow(room)
       setWf(next)
-      const sel = new Set<string>()
-      for (const d of resp.danmaku) {
-        if (d.relevant !== false) sel.add(d.id)
-      }
-      // 每轮开始时清空旧选择：本轮提交只基于本轮最新弹幕，
-      // 避免上一轮的勾选残留被 splitter 二次喂入。
-      setSelectedDmIds(sel)
-      addLog(`📥 收到 ${resp.danmaku.length} 条弹幕`, 'ok', { stage: 'collect' })
+      setEditedBeats([])
+      setSelectedDmIds(new Set())
+      addLog('🆕 已归档新一轮', 'ok', { stage: 'sys' })
     } catch (e) {
-      addLog(`💥 收集失败: ${(e as Error).message}`, 'err', { stage: 'collect' })
+      addLog(`💥 归档失败: ${(e as Error).message}`, 'err', { stage: 'sys' })
     } finally {
       setBusy(null)
     }
@@ -291,18 +346,18 @@ export default function StreamerPage() {
     }
   }
 
-  // 右侧实时弹幕点击 → addDanmaku 加入队列；若 id 已在队列则忽略
-  const handlePickLiveDm = (item: DanmakuView) => {
+  // 右栏流式弹幕的 📥 抓取按钮回调 → addDanmaku 入队列；
+  // 已存在（collectedDanmaku 或刚刚 in-flight）则幂等跳过。
+  const inFlightCaptures = useRef<Set<string>>(new Set())
+  const handleCaptureLiveDm = (item: DanmakuView) => {
     const room = ensureRoomId()
     if (!sessionId) {
       addLog('请先接入 API Key', 'warn')
       return
     }
-    const exists = (wf?.collectedDanmaku ?? []).some((d) => d.id === item.id)
-    if (exists) {
-      addLog(`已加入队列：${item.text.slice(0, 12)}…`, 'info')
-      return
-    }
+    if (inFlightCaptures.current.has(item.id)) return // 双击防护
+    if ((wf?.collectedDanmaku ?? []).some((d) => d.id === item.id)) return
+    inFlightCaptures.current.add(item.id)
     void addDanmaku(sessionId, room, item.text, item.user)
       .then((resp) => {
         setWf(resp.state)
@@ -311,6 +366,9 @@ export default function StreamerPage() {
       })
       .catch((e) => {
         addLog(`💥 入队失败: ${(e as Error).message}`, 'err', { stage: 'add' })
+      })
+      .finally(() => {
+        inFlightCaptures.current.delete(item.id)
       })
   }
 
@@ -497,24 +555,26 @@ export default function StreamerPage() {
             editedBeats={editedBeats}
             activeUrl={activeUrl}
             roomId={roomId}
+            liveDanmaku={liveDanmaku}
+            liveStreamStatus={liveStreamStatus}
             setPremise={setPremise}
             setResolution={setResolution}
             setManualDmText={setManualDmText}
             setActiveUrl={setActiveUrl}
             onStartWizard={startWizard}
-            onCollect={handleCollect}
             onSubmitDm={handleSubmitDm}
             onAddManual={handleAddManualDm}
             onClearQueue={handleClearQueue}
             onDeleteDm={handleDeleteDm}
             onToggleSelect={toggleDmSelected}
-            onPickLiveDm={handlePickLiveDm}
+            onCaptureDm={handleCaptureLiveDm}
             onUpdateBeatSummary={updateBeatSummary}
             onUpdateShotPrompt={updateShotPrompt}
             onConfirmBeats={handleConfirmBeats}
             onGenerateClips={handleGenerateClips}
             onResetWorkflow={handleResetWorkflow}
             onRecoverWorkflow={handleRecoverWorkflow}
+            onArchiveAndReset={handleArchiveAndReset}
           />
         </div>
 

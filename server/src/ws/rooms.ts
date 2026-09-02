@@ -8,6 +8,15 @@ interface BufferedEvent {
 }
 
 /**
+ * 流式弹幕事件不写入 ring buffer、不重放给新连接：
+ * 用户决策是"丢掉，不持久化"。新连进来的 WS 客户端应从 fresh live 流开始累计，
+ * 而不是把上一次会话里的弹幕再吐一遍。
+ *
+ * 仍 emit 给当前已订阅的连接。
+ */
+const SKIP_REPLAY: ReadonlySet<string> = new Set(['liveDanmaku', 'liveDanmakuStatus'])
+
+/**
  * EventEmitter that keeps a per-room ring buffer of recent events and replays
  * them to new listeners on subscribe (so late-joining WS clients don't miss
  * prior phase / clip / beat / log / danmaku / error events).
@@ -29,7 +38,7 @@ class RoomEventBus extends EventEmitter {
 
   override emit(ev: string, payload?: any): boolean {
     // Skip internal "newListener"/"removeListener" events from the buffer.
-    if (ev !== 'newListener' && ev !== 'removeListener') {
+    if (ev !== 'newListener' && ev !== 'removeListener' && !SKIP_REPLAY.has(ev)) {
       this.buffer.push({ ev, payload })
       if (this.buffer.length > RING_BUFFER_CAP) {
         this.buffer.splice(0, this.buffer.length - RING_BUFFER_CAP)

@@ -241,26 +241,24 @@ export async function handleCollect(
   const res = getResources(roomId, deps)
   const bus = getBus(deps.hub, roomId)
 
-  // 阶段校验：collect 在 idle/completed/error/collecting_danmaku/reviewing_danmaku 都允许
-  if (!['idle', 'completed', 'error', 'collecting_danmaku', 'reviewing_danmaku'].includes(state.phase)) {
+  // 阶段校验：collect 在 idle/completed/error/reviewing_danmaku 都允许
+  if (!['idle', 'completed', 'error', 'reviewing_danmaku'].includes(state.phase)) {
     throw Object.assign(new Error(`当前阶段 ${state.phase} 不能收集弹幕`), { status: 409 })
   }
 
-  // 把 phase 推到 collecting_danmaku；state machine 的 collect action 已经覆盖了所有允许起点
+  // 直接进 reviewing_danmaku（已废弃的 collecting_danmaku 阶段被取消）；
+  // completed 状态：不 reset，保留之前 collectedDanmaku/draftBeats/confirmedBeats/generatedClips，
+  //   仅追加新弹幕；语义是"再开一轮"。其他状态 idle/error/reviewing_danmaku
+  //   先 softReset 到 idle（保护性：clean previous run）再 collect。
   let next = state
-  if (state.phase !== 'collecting_danmaku') {
-    // completed 状态：不 reset，保留之前的 collectedDanmaku/draftBeats/confirmedBeats/generatedClips，
-    //   仅追加新弹幕；语义是"再开一轮"。其他状态（idle/error/collecting_danmaku/reviewing_danmaku）
-    //   先 softReset 到 idle（保护性：clean previous run）再 collect。
-    if (state.phase !== 'completed') {
-      // reset 前先停掉可能仍在跑的 GenQueue：error 后再 collect 会留 in-flight worker 写脏 store
-      await clearRoomResources(roomId)
-      next = softResetForCollect(state)
-    }
-    next = applyAction(next, 'collect')
-    workflowStore.upsert(next)
-    emitPhase(bus, 'collecting_danmaku', '开始收集弹幕')
+  if (state.phase !== 'completed') {
+    // reset 前先停掉可能仍在跑的 GenQueue：error 后再 collect 会留 in-flight worker 写脏 store
+    await clearRoomResources(roomId)
+    next = softResetForCollect(state)
   }
+  next = applyAction(next, 'collect')
+  workflowStore.upsert(next)
+  emitPhase(bus, 'reviewing_danmaku', '开始审阅弹幕')
 
   // 1) 取原始弹幕（fetchDanmaku 优先；mock 模式或未接 douyin 时 fallback 到 makeMockDanmaku）
   let raw: DanmakuItem[]
@@ -313,8 +311,8 @@ export async function handleAddDanmaku(
   const state = workflowStore.get(roomId)
   const bus = getBus(deps.hub, roomId)
 
-  // 阶段校验：允许在 idle/completed/error/collecting_danmaku/reviewing_danmaku 添加
-  if (!['idle', 'completed', 'error', 'collecting_danmaku', 'reviewing_danmaku'].includes(state.phase)) {
+  // 阶段校验：允许在 idle/completed/error/reviewing_danmaku 添加
+  if (!['idle', 'completed', 'error', 'reviewing_danmaku'].includes(state.phase)) {
     throw Object.assign(new Error(`当前阶段 ${state.phase} 不能添加弹幕`), { status: 409 })
   }
 
@@ -328,15 +326,16 @@ export async function handleAddDanmaku(
     relevance: 1,
   }
 
-  // 把 phase 推到 reviewing_danmaku（与 handleCollect 同样的迁移路径）
+  // 落到 reviewing_danmaku；从非 reviewing 状态进来时走一次 softResetForCollect + collect，
+  // 把上一轮的 draftBeats/confirmedBeats 清掉（保留 generatedClips + scriptHistory），
+  // 然后 append 本条弹幕。
   let next = state
   if (state.phase !== 'reviewing_danmaku') {
-    if (state.phase !== 'collecting_danmaku') {
+    if (state.phase !== 'completed') {
+      await clearRoomResources(roomId)
       next = softResetForCollect(state)
-      next = applyAction(next, 'collect')
-      workflowStore.upsert(next)
-      emitPhase(bus, 'collecting_danmaku', '开始收集弹幕')
     }
+    next = applyAction(next, 'collect')
     next = transitionTo(next, 'reviewing_danmaku', {
       collectedDanmaku: [...next.collectedDanmaku, item],
     })
