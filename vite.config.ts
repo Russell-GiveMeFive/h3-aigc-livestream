@@ -1,9 +1,15 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
+import { fileURLToPath } from 'node:url'
 
 export default defineConfig({
   root: 'web',
   plugins: [react()],
+  resolve: {
+    alias: {
+      '@h3/protocol': fileURLToPath(new URL('./shared', import.meta.url)),
+    },
+  },
   server: {
     port: 5173,
     proxy: {

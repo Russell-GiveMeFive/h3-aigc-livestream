@@ -4,6 +4,10 @@ import fs from 'node:fs'
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..')
 
+// 模块加载时立即加载 .env：必须早于下面 config 的求值，
+// 否则 process.env.MOCK 等字段还是 undefined，config.mock 永远是 false
+loadEnvFile()
+
 /** 极简 .env 加载（无依赖），已存在的环境变量优先 */
 export function loadEnvFile(filePath = path.join(root, '.env')): void {
   let raw: string
@@ -28,7 +32,6 @@ export const config = {
   port: Number(process.env.PORT ?? 3000),
   host: process.env.HOST ?? '127.0.0.1',
   mock: process.env.MOCK === '1',
-  envApiKey: process.env.MINIMAX_API_KEY ?? '',
   cacheDir: process.env.CACHE_DIR ?? path.join(root, 'server', 'cache'),
   minimax: {
     baseUrl: process.env.MINIMAX_BASE_URL ?? 'https://api.minimaxi.com',
@@ -52,6 +55,13 @@ export const config = {
   ffprobe: process.env.FFPROBE ?? 'ffprobe',
   python: process.env.PYTHON ?? 'python3',
   mockCardScript: path.join(root, 'scripts', 'mock_card.py'),
+  webDist: path.join(root, 'web', 'dist'),
+  danmaku: {
+    /** 抖音房间号（手动填入，douyin source 接入用） */
+    douyinRoomId: process.env.DOUYIN_ROOM_ID,
+    /** 单次收集的弹幕条数 */
+    targetCount: Number(process.env.DANMAKU_TARGET_COUNT ?? 5),
+  },
 } as const
 
 export type AppConfig = typeof config

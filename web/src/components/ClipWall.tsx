@@ -2,10 +2,22 @@ import { useMemo } from 'react'
 import type { ClipView } from '../types'
 
 /**
- * 生成视频墙：横向胶片条 + 主预览播放器。
- * 每个片段以 video preload=metadata 显示首帧，点击切换预览。
+ * 生成视频墙：横向胶片条（缩略图 + 主播放器可选）。
+ * `showPlayer=true` 时在顶部渲染主 `<video>`；否则只渲染胶片条（让父组件放主播放器）。
+ * 每个缩略图以 video preload=metadata 显示首帧，点击切换预览。
  */
-export default function ClipWall({ clips, activeUrl, onSelect }: { clips: ClipView[]; activeUrl: string | null; onSelect: (url: string) => void }) {
+export default function ClipWall({
+  clips,
+  activeUrl,
+  onSelect,
+  showPlayer = false,
+}: {
+  clips: ClipView[]
+  activeUrl: string | null
+  onSelect: (url: string) => void
+  /** 是否在墙顶部渲染主播放器；Workbench 会自带主播放器，所以这里默认 false */
+  showPlayer?: boolean
+}) {
   const unique = useMemo(() => {
     const seen = new Set<string>()
     const out: ClipView[] = []
@@ -20,7 +32,9 @@ export default function ClipWall({ clips, activeUrl, onSelect }: { clips: ClipVi
 
   return (
     <div className="clip-wall">
-      <video className="preview-player" src={activeUrl ?? undefined} controls autoPlay muted />
+      {showPlayer && activeUrl && (
+        <video key={activeUrl} className="preview-player" src={activeUrl} controls autoPlay muted />
+      )}
       {unique.length > 0 && (
         <div className="filmstrip">
           {unique.map((c) => (
@@ -37,6 +51,9 @@ export default function ClipWall({ clips, activeUrl, onSelect }: { clips: ClipVi
             </button>
           ))}
         </div>
+      )}
+      {unique.length === 0 && !showPlayer && (
+        <div className="empty-hint">尚未生成任何片段</div>
       )}
     </div>
   )

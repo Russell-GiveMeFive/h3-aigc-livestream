@@ -1,16 +1,13 @@
 import fs from 'node:fs/promises'
 import path from 'node:path'
+import { ApiError } from './minimaxError'
 
-/** 统一的 MiniMax API 错误，httpCode 可直接映射导演策略（422 敏感/429 限流/402 余额/529 过载/500 服务端） */
-export class ApiError extends Error {
-  constructor(
-    public httpCode: number,
-    public errorType: string,
-    message: string,
-    public requestId?: string,
-  ) {
-    super(message)
-  }
+export { ApiError }
+
+/** 从字符串中移除 apiKey，防止日志/回调泄露鉴权信息 */
+function scrub(s: string, apiKey: string): string {
+  if (!apiKey) return s
+  return s.split(apiKey).join('***')
 }
 
 interface UploadResp {
@@ -34,6 +31,7 @@ export class MiniMaxClient {
       method: 'POST',
       headers: { Authorization: `Bearer ${this.apiKey}`, 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
+      signal: AbortSignal.timeout(60_000),
     })
     return this.handle<T>(res)
   }
@@ -41,13 +39,14 @@ export class MiniMaxClient {
   async getJson<T = unknown>(apiPath: string): Promise<T> {
     const res = await fetch(this.baseUrl + apiPath, {
       headers: { Authorization: `Bearer ${this.apiKey}` },
+      signal: AbortSignal.timeout(60_000),
     })
     return this.handle<T>(res)
   }
 
   /** 下载产物（content.url 有时效，须及时转存本地） */
   async download(url: string, dest: string): Promise<void> {
-    const res = await fetch(url)
+    const res = await fetch(url, { signal: AbortSignal.timeout(180_000) })
     if (!res.ok) throw new ApiError(res.status, 'download_error', `下载失败: HTTP ${res.status}`)
     const buf = Buffer.from(await res.arrayBuffer())
     await fs.mkdir(path.dirname(dest), { recursive: true })
@@ -64,13 +63,21 @@ export class MiniMaxClient {
       method: 'POST',
       headers: { Authorization: `Bearer ${this.apiKey}` },
       body: form,
+      signal: AbortSignal.timeout(180_000),
     })
-    const data = (await res.json()) as UploadResp
-    if (!res.ok) {
-      throw new ApiError(res.status, 'upload_error', `文件上传失败: HTTP ${res.status} ${JSON.stringify(data)}`)
+    // 先看状态码再看 body：失败响应可能不是 JSON
+    const text = await res.text()
+    let data: UploadResp | null = null
+    try {
+      data = text ? (JSON.parse(text) as UploadResp) : null
+    } catch {
+      /* 非 JSON */
     }
-    const fileId = data.file?.file_id
-    if (fileId === undefined) throw new ApiError(500, 'upload_error', `文件上传响应缺少 file_id: ${JSON.stringify(data)}`)
+    if (!res.ok) {
+      throw new ApiError(res.status, 'upload_error', `文件上传失败: HTTP ${res.status} ${text.slice(0, 200)}`)
+    }
+    const fileId = data?.file?.file_id
+    if (fileId === undefined) throw new ApiError(500, 'upload_error', `文件上传响应缺少 file_id: ${text.slice(0, 200)}`)
     return `mm_file://${fileId}`
   }
 
@@ -80,7 +87,7 @@ export class MiniMaxClient {
       await this.getJson('/v1/models')
       return true
     } catch (e) {
-      this.onLog?.(`Key 校验失败: ${(e as Error).message}`)
+      this.onLog?.(scrub(`Key 校验失败: ${(e as Error).message}`, this.apiKey))
       return false
     }
   }

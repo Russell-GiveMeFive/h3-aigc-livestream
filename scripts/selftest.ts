@@ -1,17 +1,16 @@
 import { config, loadEnvFile } from '../server/src/config'
-import { MiniMaxClient } from '../server/src/providers/minimax'
-import { MockTextProvider, MiniMaxTextProvider } from '../server/src/providers/text'
-import { MockVideoProvider, MiniMaxVideoProvider } from '../server/src/providers/video'
-import { MiniMaxFrameLinker, MockFrameLinker } from '../server/src/gen/frameLink'
-import { LiveStream } from '../server/src/stream'
+import { MockTextProvider } from '../server/src/providers/text'
+import { MockVideoProvider } from '../server/src/providers/video'
+import { MockFrameLinker } from '../server/src/gen/frameLink'
+import { createStream } from '../server/src/factory/streamFactory'
 import { NullPusher } from '../server/src/playout/push'
+import { PlayoutEngine } from '../server/src/playout/engine'
+import { EventEmitter } from 'node:events'
 import fs from 'node:fs'
 
-/**
- * 无网络端到端自检（MOCK 模式）：
- * 剧本 → 拆分 → 生成（ffmpeg 测试片源 + 首帧续接）→ 播放池 → 按真实时间消耗。
- * 验证主环闭环可用，供 CI / 首次运行前快速体检。
- */
+/** 无网络端到端自检（MOCK 模式）：
+ *  剧本 → 拆分 → 生成（ffmpeg 测试片源 + 首帧续接）→ 播放池 → 按真实时间消耗。
+ *  使用新的 createStream 工厂，验证重构后的可装配性。 */
 async function main(): Promise<void> {
   loadEnvFile()
   process.env.MOCK = '1'
@@ -34,16 +33,19 @@ async function main(): Promise<void> {
     }),
     linker: new MockFrameLinker({ cacheDir: config.cacheDir, ffmpeg: config.ffmpeg }),
   }
+  const bus = new EventEmitter()
+  const playout = new PlayoutEngine()
+  const pusher = new NullPusher(playout)
 
-  const bus = new (await import('node:events')).EventEmitter()
-  const stream = new LiveStream({
+  console.log('▶ 启动流水线...')
+  const { stream, start } = createStream({
     roomId: 'selftest',
     script: '测试剧本：主角在小镇发现神秘钥匙',
     mock: true,
     providers,
-    textModelName: 'mock',
+    pusher,
     bus,
-    pushFactory: (engine) => new NullPusher(engine),
+    playout,
     cfg: {
       concurrency: 2,
       targetBufferSec: 15,
@@ -51,21 +53,19 @@ async function main(): Promise<void> {
       maxRetries: 1,
       rtmpUrl: 'rtmp://127.0.0.1:1935/live/selftest',
       hlsUrl: 'http://127.0.0.1:8080/live/selftest.m3u8',
-      ffmpeg: config.ffmpeg,
-      ffprobe: config.ffprobe,
       clipDuration: 5,
       resolution: '480P',
     },
     onLog: log,
   })
 
-  console.log('▶ 启动流水线...')
-  await stream.start()
+  await start()
 
-  console.log('▶ 等待生成 ≥6 个镜头且推流 ≥3 个...')
+  console.log('▶ 等待生成 ≥3 个镜头且推流 ≥3 个（手动工作流：首批入队，不再自动续写）...')
   const status = await stream.waitUntil(
-    (s) => s.clipsProduced >= 6 && s.clipsPlayed >= 3 && s.phase === 'running',
+    (s) => s.clipsProduced >= 3 && s.clipsPlayed >= 3 && s.phase === 'running',
     90_000,
+    playout,
   )
   console.log('  状态:', JSON.stringify(status, null, 2))
 
@@ -73,10 +73,9 @@ async function main(): Promise<void> {
   const clips = fs.readdirSync(config.cacheDir).filter((f) => f.startsWith('mock_') && f.endsWith('.mp4'))
 
   const ok =
-    status.clipsProduced >= 6 &&
+    status.clipsProduced >= 3 &&
     status.clipsPlayed >= 3 &&
-    status.bufferedSec > 0 &&
-    clips.length >= 6 &&
+    clips.length >= 3 &&
     frames.length >= 2
 
   await stream.stop()

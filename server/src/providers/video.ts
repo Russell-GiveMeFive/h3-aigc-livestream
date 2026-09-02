@@ -1,26 +1,13 @@
 import { execFile } from 'node:child_process'
 import path from 'node:path'
 import { promisify } from 'node:util'
-import { ApiError, MiniMaxClient } from './minimax'
-import { Shot } from '../types'
+import { MiniMaxClient } from './minimax'
+import { ApiError } from './minimaxError'
+import { Shot } from '@h3/protocol/types'
 import { sleep } from '../util'
+import type { VideoProvider, VideoGenOptions, VideoGenResult, ClipDurationPolicy } from '../interfaces/provider'
 
 const execFileAsync = promisify(execFile)
-
-export interface VideoGenOptions {
-  /** 首帧引用：mm_file://{file_id}（真实模式）或本地 png 路径（mock 模式），实现"首帧续接" */
-  firstFrame?: string
-}
-
-export interface VideoGenResult {
-  localPath: string
-  duration: number
-}
-
-export interface VideoProvider {
-  readonly name: string
-  generate(shot: Shot, opts: VideoGenOptions): Promise<VideoGenResult>
-}
 
 interface VideoTaskResp {
   task?: {
