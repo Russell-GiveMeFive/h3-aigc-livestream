@@ -29,7 +29,7 @@
 
 /* ── 预览区 ── */
 .preview-panel {
-  padding-bottom: 12px;
+  padding-bottom: 4px; /* 留出 resize handle 空间 */
 }
 
 .preview-stack {
@@ -38,6 +38,7 @@
   gap: 12px;
   min-width: 0; /* 关键：grid 子项默认 min-content，video 无法撑开 */
   width: 100%;
+  overflow: hidden; /* 高度由 JS 控制，超出隐藏避免视频溢出 */
 }
 
 .preview-stack .filmstrip {
@@ -50,6 +51,7 @@
   padding-bottom: 6px;
   min-width: 0;
   width: 100%;
+  flex: 0 0 auto;
 }
 
 .preview-stack .film-cell {
@@ -61,7 +63,8 @@
 .preview-placeholder {
   display: flex;
   width: 100%;
-  aspect-ratio: 16 / 9;
+  flex: 1 1 auto; /* 与 .preview-player 对齐：占满 .preview-stack 剩余高度 */
+  min-height: 0;
   align-items: center;
   justify-content: center;
   font-family: var(--mono);
@@ -72,6 +75,34 @@
   background: #000;
   border: 1px solid var(--line);
   border-radius: 6px;
+}
+
+/* 预览区底部拖动手柄：拖动改 .preview-stack 高度 */
+.resize-handle {
+  height: 10px;
+  margin: 6px -16px -8px; /* 横向溢出到 panel 边沿 */
+  cursor: ns-resize;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  transition: background 120ms;
+  touch-action: none; /* 阻止 pointer 触屏滚动干扰 */
+}
+.resize-handle:hover,
+.resize-handle.dragging {
+  background: rgba(255, 180, 84, 0.08);
+}
+.resize-handle .resize-grip {
+  width: 40px;
+  height: 2px;
+  background: var(--line);
+  border-radius: 1px;
+  transition: background 120ms;
+}
+.resize-handle:hover .resize-grip,
+.resize-handle.dragging .resize-grip {
+  background: var(--amber);
 }
 
 .clip-wall {
@@ -85,11 +116,13 @@
   display: block; /* video 默认 inline → width:100% 在某些浏览器不生效 */
   width: 100%;
   min-width: 0;
-  aspect-ratio: 16 / 9;
+  flex: 1 1 auto; /* 撑满 .preview-stack 剩余高度（高度由 JS 通过 resize 决定） */
+  min-height: 0;
   background: #000;
   border: 1px solid var(--line);
   border-radius: 6px;
   box-shadow: 0 14px 40px rgba(0, 0, 0, 0.5);
+  object-fit: contain; /* 高度撑满但保持 16:9，黑边由 .preview-stack 处理 */
 }
 
 .filmstrip {

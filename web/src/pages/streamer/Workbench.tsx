@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { Danmaku as DanmakuView, DraftBeat, VideoResolution, WorkflowPhase, WorkflowState } from '../../types'
 import { Chip, Panel } from '../../components/ui'
 import ClipWall from '../../components/ClipWall'
@@ -108,6 +108,41 @@ export default function Workbench({
   const isStarted = phase !== 'idle'
   // 历史剧本：上一轮（及更早）已确认的剧本，只读、折叠在面板顶部
   const scriptHistory = wf?.scriptHistory ?? []
+
+  // 预览区高度：用户可拖动调整，持久化到 localStorage
+  const PREVIEW_MIN = 220
+  const PREVIEW_MAX_GAP = 240 // 屏幕高度 - 此值 = 预览最大高度
+  const PREVIEW_DEFAULT = 380
+  const PREVIEW_LS_KEY = 'wb:preview-height'
+  const [previewHeight, setPreviewHeight] = useState<number>(() => {
+    if (typeof window === 'undefined') return PREVIEW_DEFAULT
+    const saved = Number(window.localStorage.getItem(PREVIEW_LS_KEY) ?? 0)
+    if (saved >= PREVIEW_MIN) return Math.min(saved, window.innerHeight - PREVIEW_MAX_GAP)
+    return Math.min(PREVIEW_DEFAULT, Math.max(PREVIEW_MIN, window.innerHeight - PREVIEW_MAX_GAP))
+  })
+  const dragRef = useRef<{ y: number; h: number } | null>(null)
+  const [dragging, setDragging] = useState(false)
+  function clampPreview(n: number): number {
+    return Math.min(Math.max(PREVIEW_MIN, n), Math.max(PREVIEW_MIN, window.innerHeight - PREVIEW_MAX_GAP))
+  }
+  function onResizeStart(e: React.PointerEvent<HTMLDivElement>) {
+    e.preventDefault()
+    dragRef.current = { y: e.clientY, h: previewHeight }
+    setDragging(true)
+    try { (e.target as HTMLElement).setPointerCapture(e.pointerId) } catch { /* noop */ }
+  }
+  function onResizeMove(e: React.PointerEvent<HTMLDivElement>) {
+    if (!dragRef.current) return
+    const next = clampPreview(dragRef.current.h + (e.clientY - dragRef.current.y))
+    setPreviewHeight(next)
+  }
+  function onResizeEnd(e: React.PointerEvent<HTMLDivElement>) {
+    if (!dragRef.current) return
+    dragRef.current = null
+    setDragging(false)
+    try { (e.target as HTMLElement).releasePointerCapture(e.pointerId) } catch { /* noop */ }
+    try { window.localStorage.setItem(PREVIEW_LS_KEY, String(previewHeight)) } catch { /* noop */ }
+  }
 
   const dmFeed = useMemo<DanmakuView[]>(
     () =>
@@ -329,7 +364,7 @@ export default function Workbench({
               )}
             </div>
           </div>
-          <div className="preview-stack" style={{ marginTop: 8 }}>
+          <div className="preview-stack" style={{ marginTop: 8, height: previewHeight }}>
             {activeUrl ? (
               <video
                 key={activeUrl}
@@ -345,6 +380,19 @@ export default function Workbench({
               </div>
             )}
             <ClipWall clips={clips} activeUrl={activeUrl} onSelect={setActiveUrl} />
+          </div>
+          <div
+            className={`resize-handle${dragging ? ' dragging' : ''}`}
+            onPointerDown={onResizeStart}
+            onPointerMove={onResizeMove}
+            onPointerUp={onResizeEnd}
+            onPointerCancel={onResizeEnd}
+            role="separator"
+            aria-orientation="horizontal"
+            aria-label="拖动调整视频预览高度"
+            title="拖动调整高度"
+          >
+            <span className="resize-grip" />
           </div>
         </Panel>
 
