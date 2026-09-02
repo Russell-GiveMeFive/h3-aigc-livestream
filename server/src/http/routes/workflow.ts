@@ -21,16 +21,22 @@ import type { DanmakuItem } from '@h3/protocol/types'
 
 /**
  * 把 douyin 源包成 fetchDanmaku(count) 的形态：
- * 订阅 → 累计 N 条 或 超时 → stop() → 返回。
+ * 订阅 → 10s 窗口内全量收 → stop() → 返回所有项目。
  *
  * 走 native 模式 — Node 端在 vm 沙箱里跑 webmssdk.js 算 X-Bogus，自己开 wss。
  * 不依赖 sign-server、不依赖浏览器。
+ *
+ * 设计要点：
+ * - 固定 10s 窗口（不再"收够 N 条提前退"）：避免首帧凑齐 member/like 等噪声时
+ *   把 chat 切在窗口外，参见 handlers.ts filterDanmaku 的取舍。
+ * - 不在 wrapper 内截断：把"取最新 N"和"业务过滤"留给 handler，本函数只管时间窗口。
  */
+const COLLECT_WINDOW_MS = 10_000
 function createFetchDanmakuFromDouyin(roomId: string): (count: number) => Promise<DanmakuItem[]> {
   const source = createDouyinSource({ debug: true })
-  return async (count: number): Promise<DanmakuItem[]> => {
+  return async (_count: number): Promise<DanmakuItem[]> => {
     const collected: DanmakuItem[] = []
-    const deadline = Date.now() + 30_000
+    const deadline = Date.now() + COLLECT_WINDOW_MS
     const sub = await source.subscribe({
       roomId,
       onItem: (item) => {
@@ -38,13 +44,13 @@ function createFetchDanmakuFromDouyin(roomId: string): (count: number) => Promis
       },
     })
     try {
-      while (collected.length < count && Date.now() < deadline) {
+      while (Date.now() < deadline) {
         await new Promise((r) => setTimeout(r, 200))
       }
     } finally {
       await sub.stop()
     }
-    return collected.slice(0, count)
+    return collected
   }
 }
 

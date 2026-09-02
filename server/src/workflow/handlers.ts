@@ -270,10 +270,14 @@ export async function handleCollect(
     // 不静默吞错误：让上层看到真实失败，便于排查 douyin/signature 问题
     throw new Error(`fetchDanmaku 失败: ${(e as Error).message}`)
   }
-  // 2) 黑名单/最小长度/去重
-  const filtered = filterDanmaku(raw, cfg).slice(0, cfg.targetCount)
+  // 2) 黑名单/最小长度/去重 → 末尾取 cfg.targetCount 条（不够则全返回）。
+  // 取"最新"而非"最早"：用户在 10s 窗口内通常更关心末尾进的事件；wrapper 已固定 10s 窗口，
+  // 不会出现"前5条全是 member 噪声"把 chat 切掉的旧 bug。
+  const filtered = filterDanmaku(raw, cfg)
+  const danmaku = filtered.length > cfg.targetCount ? filtered.slice(-cfg.targetCount) : filtered
 
-  // 3) LLM 分类；mock provider 跳过 classifier，直接用长度启发式
+  // 3) LLM 分类；mock provider 跳过 classifier，直接用长度启发式。
+  // 对所有 filter 后的项目打分（含截断前的）：若前端展开手选，可能改用 relevance 排序。
   const premise = body.premise ?? state.collectedDanmaku[0]?.text ?? DEFAULT_PREMISE
   const useProvider = deps.mock ? undefined : res.providers.text
   for (const item of filtered) {
@@ -282,15 +286,15 @@ export async function handleCollect(
     item.relevance = c.relevance
   }
 
-  // 合并到 store：保留旧的（防止用户重复 collect 丢数据）
-  const merged: DanmakuItem[] = [...next.collectedDanmaku, ...filtered]
+  // 合并到 store：保留旧的（防止用户重复 collect 丢数据），追加本轮截断后的弹幕。
+  const merged: DanmakuItem[] = [...next.collectedDanmaku, ...danmaku]
   const updated: WorkflowState = { ...next, collectedDanmaku: merged, startedAt: next.startedAt || Date.now() }
   // 推进入 reviewing_danmaku（合法迁移 collecting_danmaku → reviewing_danmaku）
   const finalState: WorkflowState = transitionTo(updated, 'reviewing_danmaku')
   workflowStore.upsert(finalState)
-  emitPhase(bus, 'reviewing_danmaku', `收到 ${filtered.length} 条弹幕`)
+  emitPhase(bus, 'reviewing_danmaku', `收到 ${danmaku.length} 条弹幕`)
 
-  return { danmaku: filtered, state: finalState }
+  return { danmaku, state: finalState }
   })
 }
 
