@@ -61,19 +61,49 @@ function mergeConfig(base: AppConfig, override: Partial<AppConfig>): AppConfig {
   }
 }
 
-/** 原子写：先写临时文件再 rename，避免半截文件 */
+/** 脱敏占位前缀：与 maskApiKey 输出对齐，服务端识别"前端没填/回传了 GET 响应" */
+export const MASK_PREFIX = '***'
+
+/** 是否是 maskApiKey 输出的占位（'***' / '***xxx'）；saveConfig 用作"保留磁盘旧 key"的信号 */
+export function isMaskedApiKey(apiKey: string): boolean {
+  return typeof apiKey === 'string' && apiKey.startsWith(MASK_PREFIX)
+}
+
+/** 读磁盘已有 cfg（用于 saveConfig 兜底保留 apiKey） */
+function readExistingConfig(): AppConfig | null {
+  try {
+    if (!fs.existsSync(CONFIG_PATH)) return null
+    const raw = fs.readFileSync(CONFIG_PATH, 'utf8')
+    return JSON.parse(raw) as AppConfig
+  } catch {
+    return null
+  }
+}
+
+/** 原子写：先写临时文件再 rename，避免半截文件
+ *  兜底：若入参 apiKey 是脱敏占位（'***' / '***xxx'）或空串，按"前端没填新 key"处理，
+ *  保留磁盘上已有真 key。前端 ConfigTab / SettingsPage 的 `***` 语义与此约定对齐。
+ *  注意：**不能**借空串来清 key —— 显式清 key 需单独 endpoint，不在 saveConfig 范围。 */
 export function saveConfig(cfg: AppConfig): void {
   fs.mkdirSync(path.dirname(CONFIG_PATH), { recursive: true })
+
+  let toWrite: AppConfig = cfg
+  if (isMaskedApiKey(cfg.apiKey) || cfg.apiKey === '') {
+    const existing = readExistingConfig()
+    const preserved = existing?.apiKey ?? ''
+    toWrite = { ...cfg, apiKey: preserved }
+  }
+
   const tmp = CONFIG_PATH + '.tmp'
-  fs.writeFileSync(tmp, JSON.stringify(cfg, null, 2), 'utf8')
+  fs.writeFileSync(tmp, JSON.stringify(toWrite, null, 2), 'utf8')
   fs.renameSync(tmp, CONFIG_PATH)
 }
 
 /** 脱敏 apiKey（响应里只回 '***' 或 '***xxx' 末 4 位） */
 export function maskApiKey(cfg: AppConfig): Omit<AppConfig, 'apiKey'> & { apiKey: string } {
   const { apiKey, ...rest } = cfg
-  let masked = '***'
-  if (apiKey && apiKey.length >= 4) masked = `***${apiKey.slice(-4)}`
-  else if (apiKey) masked = '***'
+  let masked = MASK_PREFIX
+  if (apiKey && apiKey.length >= 4) masked = `${MASK_PREFIX}${apiKey.slice(-4)}`
+  else if (apiKey) masked = MASK_PREFIX
   return { ...rest, apiKey: masked }
 }
